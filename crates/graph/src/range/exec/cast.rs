@@ -4,7 +4,7 @@ use crate::GraphBackend;
 
 use shared::RangeArena;
 
-use ethers_core::types::{H256, U256};
+use alloy_primitives::{B256, U256};
 use std::collections::BTreeMap;
 
 impl RangeCast<Concrete> for RangeConcrete<Concrete> {
@@ -38,7 +38,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
                         let idx = Elem::from(Concrete::from(U256::from(i)));
                         let mut bytes = [0x00; 32];
                         bytes[0] = *v;
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                         (idx, v)
                     })
                     .collect::<BTreeMap<_, _>>();
@@ -56,7 +56,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
                         let idx = Elem::from(Concrete::from(U256::from(i)));
                         let mut bytes = [0x00; 32];
                         bytes[0] = *v;
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                         (idx, v)
                     })
                     .collect::<BTreeMap<_, _>>();
@@ -74,7 +74,7 @@ impl RangeCast<Concrete, RangeDyn<Concrete>> for RangeConcrete<Concrete> {
                         let idx = Elem::from(Concrete::from(U256::from(i)));
                         let mut bytes = [0x00; 32];
                         v.encode_utf8(&mut bytes[..]);
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                         (idx, v)
                     })
                     .collect::<BTreeMap<_, _>>();
@@ -126,7 +126,7 @@ impl RangeCast<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                 }),
                 Concrete::Bytes(size, _),
             ) => {
-                let mut h = H256::default();
+                let mut h = B256::default();
                 for (i, val) in self.val.values().take(*size as usize).enumerate() {
                     match val {
                         (
@@ -201,21 +201,24 @@ pub fn exec_cast(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethers_core::types::I256;
+    use alloy_primitives::I256;
     use solang_parser::pt::Loc;
 
     #[test]
     fn int_downcast() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-1500)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(8, I256::from(0)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-1500)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(Concrete::Int(8, I256::ZERO), Loc::Implicit);
         let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(8, I256::from(36)));
+        assert_eq!(result.val, Concrete::Int(8, I256::unchecked_from(36)));
     }
 
     #[test]
     fn uint_downcast() {
         let x = RangeConcrete::new(Concrete::Uint(256, U256::from(1500)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Uint(8, U256::from(0)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Uint(8, U256::ZERO), Loc::Implicit);
         let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Uint(8, U256::from(220)));
     }
@@ -223,7 +226,7 @@ mod tests {
     #[test]
     fn int_weirdness() {
         // type(int64).max
-        let v = Concrete::max_of_type(&Concrete::Int(64, I256::from(0i32)))
+        let v = Concrete::max_of_type(&Concrete::Int(64, I256::ZERO))
             .unwrap()
             .int_val()
             .unwrap();
@@ -232,14 +235,14 @@ mod tests {
         // int128(type(int64).max) + 1
         let x = x
             .range_add(&RangeConcrete::new(
-                Concrete::Int(256, I256::from(1)),
+                Concrete::Int(256, I256::ONE),
                 Loc::Implicit,
             ))
             .unwrap()
             .maybe_concrete_value()
             .unwrap();
-        let expected = x.val.int_val().unwrap() * I256::from(-1i32);
-        let y = RangeConcrete::new(Concrete::Int(64, I256::from(0)), Loc::Implicit);
+        let expected = x.val.int_val().unwrap() * I256::MINUS_ONE;
+        let y = RangeConcrete::new(Concrete::Int(64, I256::ZERO), Loc::Implicit);
         // int64(int128(type(int64).max) + 1)
         let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Int(64, expected));
@@ -250,7 +253,7 @@ mod tests {
         let x = rc_int_sized(-101);
         let y = rc_int256(-101);
         let result = x.range_cast(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(-101)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(-101)));
     }
 
     #[test]

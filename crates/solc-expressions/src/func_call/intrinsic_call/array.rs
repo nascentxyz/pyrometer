@@ -8,7 +8,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> ArrayCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}

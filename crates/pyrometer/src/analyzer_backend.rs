@@ -14,7 +14,7 @@ use shared::{
 };
 
 use ahash::AHashMap;
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::{
     helpers::CodeLocation,
     pt::{Expression, Loc},
@@ -410,9 +410,9 @@ impl AnalyzerLike for Analyzer {
                 }
             }
             NumberLiteral(_loc, integer, exponent, _unit) => {
-                let int = U256::from_dec_str(integer).unwrap();
+                let int = U256::from_str_radix(integer, 10).unwrap();
                 let val = if !exponent.is_empty() {
-                    let exp = U256::from_dec_str(exponent).unwrap();
+                    let exp = U256::from_str_radix(exponent, 10).unwrap();
                     int * U256::from(10).pow(exp)
                 } else {
                     int

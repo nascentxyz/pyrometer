@@ -6,7 +6,7 @@ use crate::{
 
 use shared::RangeArena;
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::Loc;
 
 use std::collections::BTreeMap;
@@ -116,7 +116,7 @@ pub fn exec_slice(
             }
             Elem::Concrete(c) => {
                 if let Some(size) = c.val.maybe_array_size() {
-                    let min = U256::zero();
+                    let min = U256::ZERO;
                     // Iterates through concrete indices to check if RHS contains the index
                     let mut curr = min;
                     while curr < size {
@@ -239,7 +239,7 @@ pub fn exec_get_index(
             }
             Elem::Concrete(c) => {
                 if let Some(size) = c.val.maybe_array_size() {
-                    let min = U256::zero();
+                    let min = U256::ZERO;
                     // Iterates through concrete indices to check if RHS contains the index
                     let mut curr = min;
                     while curr < size {
@@ -378,13 +378,13 @@ mod tests {
     fn exec_dyn_get_ref_idx_low() {
         let g = DummyGraph::default();
         let mut arena = Default::default();
-        let idx0 = test_reference(1, 12.into(), 100.into());
-        let idx1 = test_reference(2, 220.into(), 1000.into());
+        let idx0 = test_reference(1, U256::from(12), U256::from(100));
+        let idx1 = test_reference(2, U256::from(220), U256::from(1000));
         let val0 = rc_uint256(200).into();
         let val1 = rc_uint256(201).into();
         let x = RangeDyn::new_for_indices(vec![(idx0, val0), (idx1, val1)], Loc::Implicit);
 
-        let get_idx = test_reference(3, 0.into(), 12.into());
+        let get_idx = test_reference(3, U256::from(0), U256::from(12));
 
         let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g, &mut arena)
             .unwrap()
@@ -397,13 +397,13 @@ mod tests {
     fn exec_dyn_get_ref_idx_high() {
         let g = DummyGraph::default();
         let mut arena = Default::default();
-        let idx0 = test_reference(1, 12.into(), 100.into());
-        let idx1 = test_reference(2, 220.into(), 1000.into());
+        let idx0 = test_reference(1, U256::from(12), U256::from(100));
+        let idx1 = test_reference(2, U256::from(220), U256::from(1000));
         let val0 = rc_uint256(200).into();
         let val1 = rc_uint256(201).into();
         let x = RangeDyn::new_for_indices(vec![(idx0, val0), (idx1, val1)], Loc::Implicit);
 
-        let get_idx = test_reference(3, 400.into(), 400.into());
+        let get_idx = test_reference(3, U256::from(400), U256::from(400));
 
         let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g, &mut arena)
             .unwrap()
@@ -416,13 +416,13 @@ mod tests {
     fn exec_dyn_get_ref_idx_all() {
         let g = DummyGraph::default();
         let mut arena = Default::default();
-        let idx0 = test_reference(1, 12.into(), 100.into());
-        let idx1 = test_reference(2, 220.into(), 1000.into());
+        let idx0 = test_reference(1, U256::from(12), U256::from(100));
+        let idx1 = test_reference(2, U256::from(220), U256::from(1000));
         let val0 = rc_uint256(200).into();
         let val1 = rc_uint256(201).into();
         let x = RangeDyn::new_for_indices(vec![(idx0, val0), (idx1, val1)], Loc::Implicit);
 
-        let get_idx = test_reference(3, 0.into(), U256::MAX);
+        let get_idx = test_reference(3, U256::ZERO, U256::MAX);
 
         let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g, &mut arena)
             .unwrap()
@@ -435,13 +435,13 @@ mod tests {
     fn exec_dyn_get_ref_idx_null() {
         let g = DummyGraph::default();
         let mut arena = Default::default();
-        let idx0 = test_reference(1, 12.into(), 100.into());
-        let idx1 = test_reference(2, 220.into(), 1000.into());
+        let idx0 = test_reference(1, U256::from(12), U256::from(100));
+        let idx1 = test_reference(2, U256::from(220), U256::from(1000));
         let val0 = rc_uint256(200).into();
         let val1 = rc_uint256(201).into();
         let x = RangeDyn::new_for_indices(vec![(idx0, val0), (idx1, val1)], Loc::Implicit);
 
-        let get_idx = test_reference(3, 0.into(), 2.into());
+        let get_idx = test_reference(3, U256::from(0), U256::from(2));
 
         let result = exec_get_index(&Elem::ConcreteDyn(x), &get_idx, true, &g, &mut arena);
         assert_eq!(result.unwrap(), Elem::Null);
@@ -455,7 +455,7 @@ mod tests {
             Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
             Loc::Implicit,
         );
-        let get_idx = test_reference(1, 0.into(), 2.into());
+        let get_idx = test_reference(1, U256::ZERO, U256::from(2));
 
         let result = exec_get_index(&Elem::Concrete(x), &get_idx, true, &g, &mut arena)
             .unwrap()
@@ -472,7 +472,7 @@ mod tests {
             Concrete::from(vec![b'h', b'e', b'l', b'l', b'o']),
             Loc::Implicit,
         );
-        let get_idx = test_reference(1, 6.into(), 8.into());
+        let get_idx = test_reference(1, U256::from(6), U256::from(8));
 
         let result = exec_get_index(&Elem::Concrete(x), &get_idx, true, &g, &mut arena);
         assert_eq!(result.unwrap(), Elem::Null);

@@ -24,7 +24,7 @@ use shared::{
     GraphError, IfElseChain, IntoExprErr, RangeArena, USE_DEBUG_SITE,
 };
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{
     CodeLocation, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
 };

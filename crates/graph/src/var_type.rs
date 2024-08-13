@@ -13,7 +13,7 @@ use shared::{GraphError, RangeArena};
 
 use shared::NodeIdx;
 
-use ethers_core::types::{Address, U256};
+use alloy_primitives::{Address, U256};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
 pub enum VarType {
@@ -218,7 +218,7 @@ impl VarType {
             Node::Enum(enu) => {
                 let variants = enu.variants();
                 let range = if !variants.is_empty() {
-                    let min = Concrete::from(U256::zero()).into();
+                    let min = Concrete::from(U256::ZERO).into();
                     let max = Concrete::from(U256::from(variants.len() - 1)).into();
                     Some(SolcRange::new(min, max, vec![]))
                 } else {
@@ -633,7 +633,7 @@ impl VarType {
     //                         return Ok(None);
     //                     };
     //                     if idx.low_u32() < (*size as u32) {
-    //                         let mut h = H256::default();
+    //                         let mut h = B256::default();
     //                         h.0[0] = val.0[idx.low_u32() as usize];
     //                         let ret_val = Concrete::Bytes(1, h);
     //                         let node = analyzer.add_node(ret_val);
@@ -685,7 +685,7 @@ impl VarType {
     //                 match node.underlying(analyzer)? {
     //                     Concrete::Bytes(size, val) => {
     //                         if idx.low_u32() < (*size as u32) {
-    //                             let mut h = H256::default();
+    //                             let mut h = B256::default();
     //                             h.0[0] = val.0[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
     //                             let node = analyzer.add_node(ret_val);
@@ -694,7 +694,7 @@ impl VarType {
     //                     }
     //                     Concrete::DynBytes(elems) => {
     //                         if idx.low_u32() < (elems.len() as u32) {
-    //                             let mut h = H256::default();
+    //                             let mut h = B256::default();
     //                             h.0[0] = elems[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
     //                             let node = analyzer.add_node(ret_val);
@@ -703,7 +703,7 @@ impl VarType {
     //                     }
     //                     Concrete::String(st) => {
     //                         if idx.low_u32() < (st.len() as u32) {
-    //                             let mut h = H256::default();
+    //                             let mut h = B256::default();
     //                             h.0[0] = st.as_bytes()[idx.low_u32() as usize];
     //                             let ret_val = Concrete::Bytes(1, h);
     //                             let node = analyzer.add_node(ret_val);

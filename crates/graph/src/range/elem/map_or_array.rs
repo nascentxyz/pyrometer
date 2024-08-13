@@ -9,7 +9,7 @@ use crate::{
 
 use shared::{GraphError, NodeIdx, RangeArena};
 
-use ethers_core::types::{H256, U256};
+use alloy_primitives::{B256, U256};
 use solang_parser::pt::Loc;
 
 use std::collections::BTreeMap;
@@ -135,10 +135,10 @@ impl RangeDyn<Concrete> {
     pub fn as_sized_bytes(&self) -> Option<Elem<Concrete>> {
         let len = self.range_get_length()?;
         let uint_val = len.maybe_concrete()?.val.uint_val()?;
-        if uint_val <= 32.into() {
-            let v = vec![0u8; uint_val.as_usize()];
+        if uint_val <= 32.try_into().unwrap() {
+            let v = vec![0u8; uint_val.try_into().unwrap()];
             let conc = Concrete::from(v)
-                .cast(Builtin::Bytes(uint_val.as_usize() as u8))
+                .cast(Builtin::Bytes(uint_val.try_into().unwrap()))
                 .unwrap();
             let to_cast = RangeConcrete::new(conc, Loc::Implicit);
             self.range_cast(&to_cast)
@@ -159,10 +159,10 @@ impl RangeDyn<Concrete> {
                 .ok()?
                 .concrete()?
                 .into_u256()?;
-            if as_u256 > usize::MAX.into() {
+            if as_u256 > U256::from(usize::MAX) {
                 usize::MAX
             } else {
-                as_u256.as_usize()
+                as_u256.try_into().unwrap()
             }
         } else {
             let mut as_u256 = self
@@ -177,10 +177,10 @@ impl RangeDyn<Concrete> {
                 }
             }
 
-            if as_u256 > usize::MAX.into() {
+            if as_u256 > U256::from(usize::MAX) {
                 usize::MAX
             } else {
-                as_u256.as_usize()
+                as_u256.try_into().unwrap()
             }
         };
 
@@ -219,7 +219,7 @@ impl RangeDyn<Concrete> {
                         .take((size).into())
                         .enumerate()
                         .map(|(i, b)| {
-                            let mut h = H256::default();
+                            let mut h = B256::default();
                             h.0[0] = b;
                             (
                                 rc_uint256(i as u128).into(),
@@ -235,7 +235,7 @@ impl RangeDyn<Concrete> {
                     b.iter()
                         .enumerate()
                         .map(|(i, by)| {
-                            let mut h = H256::default();
+                            let mut h = B256::default();
                             h.0[0] = *by;
                             (
                                 rc_uint256(i as u128).into(),
@@ -251,7 +251,7 @@ impl RangeDyn<Concrete> {
                     s.chars()
                         .enumerate()
                         .map(|(i, b): (usize, char)| {
-                            let mut h = H256::default();
+                            let mut h = B256::default();
                             h.0[0] = b as u8;
                             (
                                 rc_uint256(i as u128).into(),
@@ -262,7 +262,7 @@ impl RangeDyn<Concrete> {
                 ),
                 Concrete::Uint(256, U256::from(s.len())),
             ),
-            _ => (None, Concrete::Uint(256, 0.into())),
+            _ => (None, Concrete::Uint(256, U256::ZERO)),
         };
 
         let mut s = Self::new_for_indices(vals?, loc);

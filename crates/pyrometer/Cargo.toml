@@ -18,7 +18,7 @@ shared.workspace = true
 
 petgraph.workspace = true
 solang-parser.workspace = true
-ethers-core.workspace = true
+alloy-primitives.workspace = true
 ariadne.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true

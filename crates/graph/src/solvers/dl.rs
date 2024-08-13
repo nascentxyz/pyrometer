@@ -8,7 +8,7 @@ use crate::{
 
 use shared::{GraphError, RangeArena};
 
-use ethers_core::types::{I256, U256};
+use alloy_primitives::{I256, U256};
 use itertools::Itertools;
 use petgraph::{
     graph::NodeIndex,
@@ -504,7 +504,7 @@ impl DLSolver {
                 added_deps,
             });
         }
-        let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())));
+        let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::ZERO)));
         let mut indeterminate = false;
         normalized_constraints.iter().for_each(|constraint| {
             let a = if let Some(idx) = self.graph_map.get(&constraint.lhs) {
@@ -529,7 +529,7 @@ impl DLSolver {
                     (true, false) => {
                         if matches!(rhs_atom.op, RangeOp::Sub(_)) {
                             let const_elem = (rhs_atom.rhs.into_elem()
-                                * Elem::from(Concrete::from(I256::from(-1))))
+                                * Elem::from(Concrete::from(I256::unchecked_from(-1))))
                             .maximize(analyzer, arena)
                             .unwrap();
                             (
@@ -543,7 +543,7 @@ impl DLSolver {
                     (false, true) => {
                         if matches!(rhs_atom.op, RangeOp::Sub(_)) {
                             let const_elem = (rhs_atom.lhs.into_elem()
-                                * Elem::from(Concrete::from(I256::from(-1))))
+                                * Elem::from(Concrete::from(I256::unchecked_from(-1))))
                             .maximize(analyzer, arena)
                             .unwrap();
                             (
@@ -587,7 +587,7 @@ impl DLSolver {
             self.graph.add_edge(
                 root_node,
                 *idx,
-                AtomOrPart::Part(Elem::from(Concrete::from(U256::zero()))),
+                AtomOrPart::Part(Elem::from(Concrete::from(U256::ZERO))),
             );
         });
 
@@ -604,7 +604,7 @@ impl DLSolver {
         dists = dists
             .into_iter()
             .map(|dist| {
-                (dist * Elem::from(Concrete::from(I256::from(-1))))
+                (dist * Elem::from(Concrete::from(I256::unchecked_from(-1))))
                     .maximize(analyzer, arena)
                     .unwrap()
             })
@@ -649,7 +649,7 @@ impl DLSolver {
             "constraint: {}, {constraint:#?}",
             constraint.to_range_string(false, analyzer, arena).s
         );
-        let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())));
+        let zero_part = AtomOrPart::Part(Elem::from(Concrete::from(U256::ZERO)));
         let false_part = AtomOrPart::Part(Elem::from(Concrete::from(false)));
         let true_part = AtomOrPart::Part(Elem::from(Concrete::from(true)));
 
@@ -862,7 +862,7 @@ impl DLSolver {
                 let new_rhs = constraint
                     .rhs
                     .into_elem()
-                    .wrapping_sub(Elem::from(Concrete::from(U256::one())))
+                    .wrapping_sub(Elem::from(Concrete::from(U256::from(1))))
                     .atoms_or_part(None, analyzer, arena);
                 Self::dl_atom_normalize(
                     SolverAtom {
@@ -1066,7 +1066,7 @@ impl DLSolver {
                         ty: OpType::DL,
                         lhs: constraint.rhs,
                         op: RangeOp::Sub(true),
-                        rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())))),
+                        rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::ZERO)))),
                     });
 
                     Self::dl_atom_normalize(
@@ -1181,7 +1181,7 @@ fn bellman_ford_initialize_relax(
     let mut predecessor = vec![None; g.node_bound()];
     let mut distance = vec![Elem::from(Concrete::from(U256::MAX)); g.node_bound()];
     let ix = |i| g.to_index(i);
-    distance[ix(source)] = Elem::from(Concrete::from(U256::zero()));
+    distance[ix(source)] = Elem::from(Concrete::from(U256::ZERO));
 
     // Step 2: relax edges repeatedly
     for _ in 1..g.node_count() {

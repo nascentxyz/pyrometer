@@ -14,7 +14,7 @@ use crate::{
 use std::hash::Hasher;
 use std::{fmt::Display, hash::Hash};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use shared::{GraphError, NodeIdx, RangeArena};
 
 /// A range expression composed of other range [`Elem`]
@@ -72,8 +72,8 @@ impl<T: Hash> Hash for RangeExpr<T> {
 
 impl RangeExpr<Concrete> {
     pub fn is_noop(&self) -> (bool, usize) {
-        let one = Elem::from(Concrete::from(U256::one()));
-        let zero = Elem::from(Concrete::from(U256::zero()));
+        let one = Elem::from(Concrete::from(U256::from(1)));
+        let zero = Elem::from(Concrete::from(U256::ZERO));
         match self.op {
             RangeOp::Mul(_) | RangeOp::Div(_) => {
                 if *self.lhs == one {

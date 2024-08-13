@@ -6,7 +6,7 @@ use crate::{
 };
 use shared::{GraphError, NodeIdx, RangeArena};
 
-use ethers_core::types::I256;
+use alloy_primitives::I256;
 
 use std::collections::BTreeMap;
 
@@ -544,7 +544,7 @@ impl Elem<Concrete> {
             Elem::Concrete(RangeConcrete {
                 val: Concrete::Int(_, val),
                 ..
-            }) if val < &I256::zero() => true,
+            }) if val < &I256::ZERO => true,
             Elem::Reference(dy) => {
                 if maximize {
                     dy.maximize(analyzer, arena)?
@@ -569,7 +569,7 @@ impl Elem<Concrete> {
     }
 
     pub fn pre_evaled_is_negative(&self) -> bool {
-        matches!(self, Elem::Concrete(RangeConcrete { val: Concrete::Int(_, val), ..}) if val < &I256::zero())
+        matches!(self, Elem::Concrete(RangeConcrete { val: Concrete::Int(_, val), ..}) if val < &I256::ZERO)
     }
 
     pub fn inverse_if_boolean(&self) -> Option<Self> {

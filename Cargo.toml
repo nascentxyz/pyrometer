@@ -49,12 +49,12 @@ tracing-subscriber = { version = "0.3", features = [
     "env-filter",
     "fmt",
 ] }
-tracing-tree = "0.3.0"
-ethers-core = "*"
+tracing-tree = "0.4.0"
+alloy-primitives = "0.7"
 hex = "0.4.3"
 ariadne = "0.4.1"
-petgraph = "0.6.2"
-ahash = "0.8.10"
+petgraph = "0.6.5"
+ahash = "0.8.11"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

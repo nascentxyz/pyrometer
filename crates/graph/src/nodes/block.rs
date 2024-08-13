@@ -1,7 +1,7 @@
 use crate::{nodes::Concrete, range::elem::Elem, AsDotStr, GraphBackend, Node};
 use shared::{GraphError, NodeIdx, RangeArena};
 
-use ethers_core::types::{Address, H256, U256};
+use alloy_primitives::{Address, B256, U256};
 
 /// An index in the graph that references a Block node
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -51,7 +51,7 @@ impl From<NodeIdx> for BlockNode {
 #[derive(Debug, Default, Clone, Eq, PartialEq)]
 pub struct Block {
     /// The block's hash
-    pub hash: Option<H256>,
+    pub hash: Option<B256>,
     /// The block's basefee
     pub basefee: Option<U256>,
     /// The chain id
@@ -69,7 +69,7 @@ pub struct Block {
     /// The block's timestamp
     pub timestamp: Option<U256>,
     /// The block's blobhash
-    pub blobhash: Vec<H256>,
+    pub blobhash: Vec<B256>,
     /// Blob base fee
     pub blobbasefee: Option<U256>,
 }

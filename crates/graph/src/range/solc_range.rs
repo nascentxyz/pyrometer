@@ -6,7 +6,7 @@ use crate::{
 
 use shared::{GraphError, NodeIdx, RangeArena};
 
-use ethers_core::types::{Address, H256, I256, U256};
+use alloy_primitives::{Address, B256, I256, U256};
 use solang_parser::pt::Loc;
 
 use std::{borrow::Cow, collections::BTreeMap};
@@ -175,7 +175,7 @@ impl SolcRange {
                         let idx = Elem::from(Concrete::from(U256::from(i)));
                         let mut bytes = [0x00; 32];
                         bytes[0] = *v;
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                         (idx, v)
                     })
                     .collect::<BTreeMap<_, _>>();
@@ -196,7 +196,7 @@ impl SolcRange {
                 if *size == 256 {
                     Some(SolcRange::new(
                         Elem::Concrete(RangeConcrete::new(
-                            Concrete::Uint(*size, 0.into()),
+                            Concrete::Uint(*size, U256::ZERO),
                             Loc::Implicit,
                         )),
                         Elem::Concrete(RangeConcrete::new(
@@ -208,11 +208,14 @@ impl SolcRange {
                 } else {
                     Some(SolcRange::new(
                         Elem::Concrete(RangeConcrete::new(
-                            Concrete::Uint(*size, 0.into()),
+                            Concrete::Uint(*size, U256::ZERO),
                             Loc::Implicit,
                         )),
                         Elem::Concrete(RangeConcrete::new(
-                            Concrete::Uint(*size, U256::from(2).pow(U256::from(*size)) - 1),
+                            Concrete::Uint(
+                                *size,
+                                U256::from(2).pow(U256::from(*size)) - U256::from(1),
+                            ),
                             Loc::Implicit,
                         )),
                         vec![],
@@ -234,8 +237,8 @@ impl SolcRange {
                     ))
                 } else {
                     let max: I256 =
-                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::from(1);
-                    let min = max * I256::from(-1i32) - I256::from(1i32);
+                        I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::ONE;
+                    let min = max * I256::MINUS_ONE - I256::ONE;
                     Some(SolcRange::new(
                         Elem::Concrete(RangeConcrete::new(
                             Concrete::Int(*size, min),
@@ -271,11 +274,11 @@ impl SolcRange {
                     .collect();
                 Some(SolcRange::new(
                     Elem::Concrete(RangeConcrete::new(
-                        Concrete::Bytes(*size, H256::from_slice(&[0x00; 32])),
+                        Concrete::Bytes(*size, B256::from_slice(&[0x00; 32])),
                         Loc::Implicit,
                     )),
                     Elem::Concrete(RangeConcrete::new(
-                        Concrete::Bytes(*size, H256::from_slice(&v[..])),
+                        Concrete::Bytes(*size, B256::from_slice(&v[..])),
                         Loc::Implicit,
                     )),
                     vec![],
@@ -286,7 +289,7 @@ impl SolcRange {
             | Builtin::Array(_)
             | Builtin::Mapping(_, _) => Some(SolcRange::new(
                 Elem::ConcreteDyn(RangeDyn::new(
-                    Elem::from(Concrete::from(U256::zero())),
+                    Elem::from(Concrete::from(U256::ZERO)),
                     Default::default(),
                     Loc::Implicit,
                 )),
@@ -494,7 +497,7 @@ impl SolcRange {
     pub fn mod_dyn(self, other: ContextVarNode) -> Self {
         let elem = Elem::from(other);
         Self::new(
-            Elem::from(Concrete::from(U256::zero())),
+            Elem::from(Concrete::from(U256::ZERO)),
             elem.clone() - Elem::from(Concrete::from(U256::from(1))).cast(elem),
             self.exclusions,
         )

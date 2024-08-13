@@ -190,7 +190,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 //                 let idx = Elem::from(Concrete::from(U256::from(i)));
                 //                 let mut bytes = [0x00; 32];
                 //                 v.encode_utf8(&mut bytes[..]);
-                //                 let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                //                 let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                 //                 (idx, v)
                 //             })
                 //             .collect::<BTreeMap<_, _>>()
@@ -203,7 +203,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 //                 let idx = Elem::from(Concrete::from(U256::from(i)));
                 //                 let mut bytes = [0x00; 32];
                 //                 bytes[0] = *v;
-                //                 let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                //                 let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                 //                 (idx, v)
                 //             })
                 //             .collect::<BTreeMap<_, _>>()

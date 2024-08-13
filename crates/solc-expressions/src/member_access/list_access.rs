@@ -7,7 +7,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> ListAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
@@ -100,7 +100,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         // Create the range from the current length or default to [0, uint256.max]
         let len_min = Elem::from(array)
             .get_length()
-            .max(Elem::from(Concrete::from(U256::zero())));
+            .max(Elem::from(Concrete::from(U256::ZERO)));
         let len_max = Elem::from(array)
             .get_length()
             .min(Elem::from(Concrete::from(U256::MAX)));

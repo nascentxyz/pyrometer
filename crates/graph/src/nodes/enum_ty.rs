@@ -6,7 +6,7 @@ use crate::{
 
 use shared::{GraphError, NodeIdx, RangeArena};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use petgraph::visit::EdgeRef;
 use solang_parser::pt::{EnumDefinition, Identifier, Loc};
 

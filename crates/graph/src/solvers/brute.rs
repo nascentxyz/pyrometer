@@ -10,7 +10,7 @@ use crate::{
 
 use shared::{GraphError, RangeArena};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use std::collections::BTreeMap;
 
 pub trait SolcSolver {

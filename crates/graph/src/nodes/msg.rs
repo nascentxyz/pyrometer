@@ -6,7 +6,7 @@ use crate::{
 
 use shared::{GraphError, NodeIdx, RangeArena};
 
-use ethers_core::types::{Address, U256};
+use alloy_primitives::{Address, U256};
 use solang_parser::pt::Loc;
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]

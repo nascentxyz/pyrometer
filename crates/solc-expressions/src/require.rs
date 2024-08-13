@@ -11,7 +11,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::I256;
+use alloy_primitives::I256;
 use solang_parser::pt::Loc;
 
 use std::cmp::Ordering;
@@ -939,7 +939,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 let (needs_inverse, adjusted_gt_rhs) = match tmp_construction.op {
                     RangeOp::Sub(..) => {
                         let concrete = ConcreteNode(
-                            self.add_node(Concrete::Int(256, I256::from(-1i32))).index(),
+                            self.add_node(Concrete::Int(256, I256::MINUS_ONE)).index(),
                         );
                         let lhs_cvar = ContextVar::new_from_concrete(loc, ctx, concrete, self)
                             .into_expr_err(loc)?;

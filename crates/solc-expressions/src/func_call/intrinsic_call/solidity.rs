@@ -10,7 +10,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::H256;
+use alloy_primitives::B256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> SolidityCaller for T where
@@ -49,7 +49,7 @@ pub trait SolidityCaller:
                     let mut out = [0; 32];
                     keccak_hash::keccak_256(&bytes, &mut out);
 
-                    let hash_node = ConcreteNode::from(self.add_node(Concrete::from(H256(out))));
+                    let hash_node = ConcreteNode::from(self.add_node(Concrete::from(B256::new(out))));
                     let var = ContextVar::new_from_concrete(loc, ctx, hash_node, self)
                         .into_expr_err(loc)?;
                     let cvar = self.add_node(var);

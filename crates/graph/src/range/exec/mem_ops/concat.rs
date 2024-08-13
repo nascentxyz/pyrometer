@@ -4,7 +4,7 @@ use crate::GraphBackend;
 
 use shared::RangeArena;
 
-use ethers_core::types::{H256, U256};
+use alloy_primitives::{B256, U256};
 use std::collections::BTreeMap;
 
 impl RangeConcat<Concrete> for RangeConcrete<Concrete> {
@@ -31,7 +31,7 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                         let idx = *last.clone() + idx;
                         let mut bytes = [0x00; 32];
                         bytes[0] = *v;
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                         (idx, (v, self.op_num + i + 1))
                     })
                     .collect::<BTreeMap<_, _>>();
@@ -55,7 +55,7 @@ impl RangeConcat<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                         let idx = *last.clone() + idx;
                         let mut bytes = [0x00; 32];
                         v.encode_utf8(&mut bytes[..]);
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                         (idx, (v, self.op_num + i + 1))
                     })
                     .collect::<BTreeMap<_, _>>();

@@ -4,7 +4,7 @@ use crate::GraphBackend;
 
 use shared::RangeArena;
 
-use ethers_core::types::{I256, U256};
+use alloy_primitives::{I256, U256};
 
 impl RangeMul<Concrete> for RangeConcrete<Concrete> {
     fn range_mul(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -25,7 +25,7 @@ impl RangeMul<Concrete> for RangeConcrete<Concrete> {
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v))
                 | (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
-                    let tmp = Concrete::Int(*lhs_size, I256::from(0i32));
+                    let tmp = Concrete::Int(*lhs_size, I256::ZERO);
                     let min = Concrete::min_of_type(&tmp).unwrap().int_val().unwrap();
                     let max = Concrete::max_of_type(&tmp).unwrap().int_val().unwrap();
 
@@ -35,7 +35,7 @@ impl RangeMul<Concrete> for RangeConcrete<Concrete> {
                     Some(rc.into())
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                    let tmp = Concrete::Int(*lhs_size, I256::from(0i32));
+                    let tmp = Concrete::Int(*lhs_size, I256::ZERO);
                     let min = Concrete::min_of_type(&tmp).unwrap().int_val().unwrap();
                     let max = Concrete::max_of_type(&tmp).unwrap().int_val().unwrap();
 
@@ -174,7 +174,7 @@ pub fn exec_mul(
     };
 
     if wrapping {
-        let zero = Elem::from(Concrete::from(U256::zero()));
+        let zero = Elem::from(Concrete::from(U256::ZERO));
         let mut all_overflowed = true;
         let mut one_overflowed = false;
         let add_candidate = |lhs: &Elem<Concrete>,
@@ -314,7 +314,7 @@ mod tests {
         let x = rc_int_sized(-127);
         let y = rc_int_sized(-127);
         let result = x.range_mul(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(8, I256::from(127i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::unchecked_from(127i32)));
     }
 
     #[test]
@@ -322,7 +322,7 @@ mod tests {
         let x = rc_int_sized(-1);
         let y = rc_int_sized(-128);
         let result = x.range_mul(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(8, I256::from(127i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::unchecked_from(127i32)));
     }
 
     #[test]
@@ -333,7 +333,7 @@ mod tests {
         let result = x.range_mul(&y).unwrap().maybe_concrete_value().unwrap();
         let result2 = x.range_mul(&y2).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result, result2);
-        assert_eq!(result.val, Concrete::Int(8, I256::from(-128i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::unchecked_from(-128i32)));
     }
     #[test]
     fn sized_uint_int() {
@@ -343,25 +343,37 @@ mod tests {
         let result = x.range_mul(&y).unwrap().maybe_concrete_value().unwrap();
         let result2 = x2.range_mul(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result, result2);
-        assert_eq!(result.val, Concrete::Int(8, I256::from(-128i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::unchecked_from(-128i32)));
     }
 
     #[test]
     fn sized_wrapping_int_int() {
-        let x = RangeConcrete::new(Concrete::Int(8, I256::from(-127i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(8, I256::from(-127i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(8, I256::unchecked_from(-127i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::Int(8, I256::unchecked_from(-127i32)),
+            Loc::Implicit,
+        );
         let result = x
             .range_wrapping_mul(&y)
             .unwrap()
             .maybe_concrete_value()
             .unwrap();
-        assert_eq!(result.val, Concrete::Int(8, I256::from(1i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::ONE));
     }
 
     #[test]
     fn sized_wrapping_int_uint() {
-        let x = RangeConcrete::new(Concrete::Int(8, I256::from(-127i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(8, I256::from(127i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(8, I256::unchecked_from(-127i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::Int(8, I256::unchecked_from(127i32)),
+            Loc::Implicit,
+        );
         let result = x
             .range_wrapping_mul(&y)
             .unwrap()
@@ -374,7 +386,7 @@ mod tests {
             .maybe_concrete_value()
             .unwrap();
         assert_eq!(result, result2);
-        assert_eq!(result.val, Concrete::Int(8, I256::from(-1i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::MINUS_ONE));
     }
 
     #[test]
@@ -451,7 +463,7 @@ mod tests {
         .maybe_concrete()
         .unwrap();
         // we just have to underestimate
-        assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
+        assert_eq!(min_result.val, Concrete::Uint(8, U256::ZERO));
     }
 
     #[test]
@@ -469,14 +481,20 @@ mod tests {
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
+        assert_eq!(
+            max_result.val,
+            Concrete::Int(8, I256::unchecked_from(127i32))
+        );
         let min_result = exec_mul(
             &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
         )
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
+        assert_eq!(
+            min_result.val,
+            Concrete::Int(8, I256::unchecked_from(-128i32))
+        );
     }
 
     #[test]
@@ -494,13 +512,19 @@ mod tests {
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(max_result.val, Concrete::Int(8, I256::from(15i32)));
+        assert_eq!(
+            max_result.val,
+            Concrete::Int(8, I256::unchecked_from(15i32))
+        );
         let min_result = exec_mul(
             &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
         )
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Int(8, I256::from(-15i32)));
+        assert_eq!(
+            min_result.val,
+            Concrete::Int(8, I256::unchecked_from(-15i32))
+        );
     }
 }

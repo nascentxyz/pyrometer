@@ -10,7 +10,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> BinOp for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
@@ -380,7 +380,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 .evaled_range_min(self, arena)
                 .into_expr_err(loc)?
                 .expect("No range?")
-                .range_eq(&Elem::from(Concrete::from(U256::zero())), arena)
+                .range_eq(&Elem::from(Concrete::from(U256::ZERO)), arena)
         {
             let res = ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc);
             let _ = self.add_if_err(res);
@@ -390,7 +390,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         // otherwise, require rhs != 0
         let tmp_rhs = self.advance_var_in_ctx(rhs, loc, ctx)?;
-        let zero_node = self.add_concrete_var(ctx, Concrete::from(U256::zero()), loc)?;
+        let zero_node = self.add_concrete_var(ctx, Concrete::from(U256::ZERO), loc)?;
 
         if self
             .require(arena, ctx, tmp_rhs, zero_node, RangeOp::Neq, loc)?

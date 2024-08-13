@@ -9,7 +9,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> PrecompileCaller for T where

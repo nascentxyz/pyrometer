@@ -6,7 +6,7 @@ use crate::{
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
-use ethers_core::types::H256;
+use alloy_primitives::B256;
 
 use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
@@ -54,7 +54,7 @@ impl FunctionNode {
             keccak_hash::keccak_256(name.as_bytes(), &mut out);
             let mut sig = [0; 32];
             (0..4).for_each(|j| sig[j] = out[j]);
-            Ok(Some(Concrete::Bytes(4, H256(sig))))
+            Ok(Some(Concrete::Bytes(4, B256::new(sig))))
         }
     }
 

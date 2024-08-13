@@ -12,7 +12,7 @@ use crate::{
 
 use shared::{GraphError, IntoExprErr, RangeArena, Search, StorageLocation};
 
-use ethers_core::types::{I256, U256};
+use alloy_primitives::{I256, U256};
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::Loc;
 
@@ -533,7 +533,7 @@ impl ContextVarNode {
                 min_expr.arenaize(analyzer, arena)?;
                 max_expr.arenaize(analyzer, arena)?;
 
-                let zero = Elem::from(Concrete::from(U256::zero()));
+                let zero = Elem::from(Concrete::from(U256::ZERO));
                 if r.contains_elem(&zero, analyzer, arena) {
                     min_expr = min_expr.min(zero.clone());
                     max_expr = max_expr.max(zero);
@@ -559,7 +559,7 @@ impl ContextVarNode {
                         (Builtin::Int(_), Builtin::Uint(_size)) => {
                             // from ty is int, to ty is uint
                             if let Some(r) = self.ref_range(analyzer)? {
-                                let neg1 = Concrete::from(I256::from(-1i32));
+                                let neg1 = Concrete::from(I256::MINUS_ONE);
                                 if r.contains_elem(&neg1.clone().into(), analyzer, arena) {
                                     max_expr =
                                         max_expr.max(neg1.bit_representation().unwrap().into());
@@ -650,7 +650,7 @@ impl ContextVarNode {
                 .max((*self).range_max(analyzer)?.unwrap().cast(to_range.min));
 
             if let Some(r) = self.ref_range(analyzer)? {
-                let zero = Elem::from(Concrete::from(U256::zero()));
+                let zero = Elem::from(Concrete::from(U256::ZERO));
                 if r.contains_elem(&zero, analyzer, arena) {
                     min_expr = min_expr.min(zero.clone());
                     max_expr = max_expr.max(zero);
@@ -677,7 +677,7 @@ impl ContextVarNode {
                     (Builtin::Int(_), Builtin::Uint(_size)) => {
                         // from ty is int, to ty is uint
                         if let Some(r) = self.ref_range(analyzer)? {
-                            let neg1 = Concrete::from(I256::from(-1i32));
+                            let neg1 = Concrete::from(I256::MINUS_ONE);
                             if r.contains_elem(&neg1.clone().into(), analyzer, arena) {
                                 max_expr = max_expr.max(neg1.bit_representation().unwrap().into());
                             }

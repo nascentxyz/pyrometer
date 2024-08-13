@@ -10,7 +10,7 @@ use graph::{
 };
 use shared::{ExprErr, FlatExpr, IntoExprErr, RangeArena, StorageLocation};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> YulFuncCaller for T where
@@ -174,7 +174,7 @@ pub trait YulFuncCaller:
                 let expr = Elem::Expr(RangeExpr::new(
                     Elem::from(res),
                     RangeOp::Cast,
-                    Elem::from(Concrete::Uint(256, U256::zero())),
+                    Elem::from(Concrete::Uint(256, U256::ZERO)),
                 ));
 
                 next.set_range_min(self, arena, expr.clone())
@@ -196,7 +196,7 @@ pub trait YulFuncCaller:
 
                 let [lhs_paths] = inputs.into_sized();
 
-                let cnode = ConcreteNode::from(self.add_node(Concrete::from(U256::from(0))));
+                let cnode = ConcreteNode::from(self.add_node(Concrete::from(U256::ZERO)));
                 let tmp_true = ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                     .into_expr_err(loc)?;
                 let rhs_paths =
@@ -280,7 +280,7 @@ pub trait YulFuncCaller:
                         .into_expr_err(loc)?;
                 var.display_name = format!("{name}_success");
                 let mut range = SolcRange::try_from_builtin(&b).unwrap();
-                range.min = Elem::from(Concrete::from(U256::from(0)));
+                range.min = Elem::from(Concrete::from(U256::ZERO));
                 range.max = Elem::from(Concrete::from(U256::from(1)));
                 var.ty.set_range(range).into_expr_err(loc)?;
                 let node = self.add_node(var);

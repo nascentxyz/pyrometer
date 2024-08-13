@@ -10,7 +10,7 @@ use crate::{
 };
 use shared::RangeArena;
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use std::{collections::BTreeMap, rc::Rc};
 
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
@@ -33,7 +33,7 @@ impl AtomOrPart {
                 ty: OpType::DL,
                 lhs: Rc::new(self.clone()),
                 op: RangeOp::Sub(false),
-                rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::zero())))),
+                rhs: Rc::new(AtomOrPart::Part(Elem::from(Concrete::from(U256::ZERO)))),
             },
             AtomOrPart::Atom(atom) => atom.clone(),
         }
