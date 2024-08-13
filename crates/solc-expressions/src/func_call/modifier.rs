@@ -83,6 +83,7 @@ pub trait ModifierCaller:
                 Some(mod_state.clone()),
                 None,
                 None,
+                mod_state.try_catch,
             )
         })
     }
@@ -173,6 +174,7 @@ pub trait ModifierCaller:
                         new_parent_subctx,
                         modifier_state.parent_fn,
                         None,
+                        modifier_state.try_catch,
                     )
                 }
             },

@@ -14,7 +14,7 @@ use graph::{
     },
     AnalyzerBackend, Node,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{ExprErr, ExprFlag, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -74,6 +74,12 @@ pub trait IntrinsicFuncCaller:
             }
             Node::Contract(_)  => {
                 let cnode = ContractNode::from(ty_idx);
+                let try_catch = if matches!(ctx.peek_expr_flag(self), Some(ExprFlag::Try)) {
+                    ctx.take_expr_flag(self);
+                    true
+                } else {
+                    false
+                };
                 if let Some(constructor) = cnode.constructor(self) {
                     let params = constructor.params(self);
                     if params.is_empty() {
@@ -90,6 +96,7 @@ pub trait IntrinsicFuncCaller:
                             None,
                             env,
                             id,
+                            try_catch,
                         )?;
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                             let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
@@ -123,6 +130,7 @@ pub trait IntrinsicFuncCaller:
                                 None,
                                 env.clone(),
                                 id,
+                                try_catch,
                             )?;
                             analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                                 let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {

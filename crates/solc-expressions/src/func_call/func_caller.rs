@@ -38,6 +38,7 @@ pub trait FuncCaller:
         modifier_state: Option<ModifierState>,
         msg: Option<EnvCtx>,
         ext_target: Option<ContractId>,
+        try_catch: bool,
     ) -> Result<(), ExprErr> {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
@@ -66,6 +67,7 @@ pub trait FuncCaller:
                         &modifier_state,
                         msg.clone(),
                         ext_target,
+                        try_catch,
                     )
                 })
             }
@@ -103,6 +105,7 @@ pub trait FuncCaller:
                             &modifier_state,
                             msg.clone(),
                             ext_target,
+                            try_catch,
                         )
                     })
                 } else {
@@ -129,6 +132,7 @@ pub trait FuncCaller:
                     &modifier_state,
                     msg.clone(),
                     ext_target,
+                    try_catch,
                 )
             }),
             e => todo!("here: {:?}", e),
@@ -150,6 +154,7 @@ pub trait FuncCaller:
         modifier_state: &Option<ModifierState>,
         env: Option<EnvCtx>,
         ext_target: Option<ContractId>,
+        try_catch: bool,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
             "Calling function: {} in context: {}",
@@ -224,6 +229,7 @@ pub trait FuncCaller:
                         callee_ctx,
                         ctx,
                         renamed_inputs.clone(),
+                        try_catch,
                     );
                     for _ in 0..mods.len() {
                         analyzer.call_modifier_for_fn(
@@ -243,6 +249,7 @@ pub trait FuncCaller:
                         callee_ctx,
                         func_node,
                         func_call_str,
+                        try_catch,
                     )
                 } else if let Some(mod_state) =
                     &ctx.underlying(analyzer).into_expr_err(loc)?.modifier_state
@@ -262,6 +269,7 @@ pub trait FuncCaller:
                             callee_ctx,
                             func_node,
                             func_call_str,
+                            try_catch,
                         )
                     }
                 } else if !mods.is_empty() {
@@ -273,6 +281,7 @@ pub trait FuncCaller:
                         callee_ctx,
                         ctx,
                         renamed_inputs.clone(),
+                        try_catch,
                     );
                     analyzer.call_modifier_for_fn(arena, loc, callee_ctx, func_node, state)
                 } else {
@@ -284,6 +293,7 @@ pub trait FuncCaller:
                         callee_ctx,
                         func_node,
                         func_call_str,
+                        try_catch,
                     )
                 }
             },
@@ -300,8 +310,12 @@ pub trait FuncCaller:
         callee_ctx: ContextNode,
         func_node: FunctionNode,
         func_call_str: Option<&str>,
+        try_catch: bool,
     ) -> Result<(), ExprErr> {
-        tracing::trace!("executing: {}", func_node.name(self).into_expr_err(loc)?);
+        tracing::trace!(
+            "executing: {}, try_catch: {try_catch}",
+            func_node.name(self).into_expr_err(loc)?
+        );
         if let Some(body) = func_node.underlying(self).into_expr_err(loc)?.body.clone() {
             // add return nodes into the subctx
             #[allow(clippy::unnecessary_to_owned)]

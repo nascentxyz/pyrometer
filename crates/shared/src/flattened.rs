@@ -9,10 +9,12 @@ pub enum ExprFlag {
         call_block_inputs: usize,
         is_super: bool,
         named_args: bool,
+        try_catch: bool,
     },
-    New,
-    Negate,
-    Requirement,
+    Try,
+    New(bool),
+    Negate(bool),
+    Requirement(bool),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -38,10 +40,7 @@ pub enum FlatExpr {
         after_each: usize,
         body: usize,
     },
-    Try {
-        loc: Loc,
-        try_expr: usize,
-    },
+    Try(Loc),
 
     Todo(Loc, &'static str),
     Pop,
@@ -74,8 +73,18 @@ pub enum FlatExpr {
     ArrayLiteral(Loc, usize),
     MemberAccess(Loc, &'static str),
     FunctionCallBlock(Loc, usize),
-    FunctionCall(Loc, Option<NodeIdx>, usize, usize),
-    NamedFunctionCall(Loc, Option<NodeIdx>, usize, usize),
+    FunctionCall {
+        loc: Loc,
+        maybe_target: Option<NodeIdx>,
+        num_inputs: usize,
+        num_call_block_inputs: usize,
+    },
+    NamedFunctionCall {
+        loc: Loc,
+        maybe_target: Option<NodeIdx>,
+        num_inputs: usize,
+        num_call_block_inputs: usize,
+    },
     Not(Loc),
     Negate(Loc),
     Delete(Loc),
@@ -180,8 +189,8 @@ impl std::fmt::Display for FlatExpr {
             ArrayTy(..) => write!(f, "[]"),
             ArrayIndexAccess(..) => write!(f, "[(..)]"),
             MemberAccess(_, field) => write!(f, ".{field}"),
-            FunctionCall(_, _, n, _) => write!(f, "({})", "_,".repeat(*n)),
-            NamedFunctionCall(_, _, _, _) => write!(f, "(..)"),
+            FunctionCall { num_inputs, .. } => write!(f, "({})", "_,".repeat(*num_inputs)),
+            NamedFunctionCall { .. } => write!(f, "(..)"),
             Not(_) => write!(f, "~"),
             Negate(_) => write!(f, "-"),
             Delete(_) => write!(f, "delete "),
@@ -331,7 +340,7 @@ impl FlatExpr {
             If { loc, .. }
             | While { loc, .. }
             | For { loc, .. }
-            | Try { loc, .. }
+            | Try(loc, ..)
             | VarDef(loc, ..)
             | Todo(loc, ..)
             | Emit(loc, ..)
@@ -347,9 +356,9 @@ impl FlatExpr {
             | ArrayIndexAccess(loc, ..)
             | ArraySlice(loc, ..)
             | MemberAccess(loc, ..)
-            | FunctionCall(loc, ..)
             | FunctionCallBlock(loc, ..)
-            | NamedFunctionCall(loc, ..)
+            | FunctionCall { loc, .. }
+            | NamedFunctionCall { loc, .. }
             | Not(loc, ..)
             | Negate(loc, ..)
             | Delete(loc, ..)
@@ -478,12 +487,22 @@ impl TryFrom<&Expression> for FlatExpr {
             FunctionCall(loc, call, input_exprs) => {
                 if let FunctionCallBlock(_, _, args) = &**call {
                     if let solang_parser::pt::Statement::Args(_, args) = &**args {
-                        FlatExpr::FunctionCall(*loc, None, input_exprs.len(), args.len())
+                        FlatExpr::FunctionCall {
+                            loc: *loc,
+                            maybe_target: None,
+                            num_inputs: input_exprs.len(),
+                            num_call_block_inputs: args.len(),
+                        }
                     } else {
                         unreachable!()
                     }
                 } else {
-                    FlatExpr::FunctionCall(*loc, None, input_exprs.len(), 0)
+                    FlatExpr::FunctionCall {
+                        loc: *loc,
+                        maybe_target: None,
+                        num_inputs: input_exprs.len(),
+                        num_call_block_inputs: 0,
+                    }
                 }
             }
             FunctionCallBlock(loc, _, ref args) => {
@@ -496,12 +515,22 @@ impl TryFrom<&Expression> for FlatExpr {
             NamedFunctionCall(loc, call, input_exprs) => {
                 if let FunctionCallBlock(_, _, args) = &**call {
                     if let solang_parser::pt::Statement::Args(_, args) = &**args {
-                        FlatExpr::NamedFunctionCall(*loc, None, input_exprs.len(), args.len())
+                        FlatExpr::NamedFunctionCall {
+                            loc: *loc,
+                            maybe_target: None,
+                            num_inputs: input_exprs.len(),
+                            num_call_block_inputs: args.len(),
+                        }
                     } else {
                         unreachable!()
                     }
                 } else {
-                    FlatExpr::NamedFunctionCall(*loc, None, input_exprs.len(), 0)
+                    FlatExpr::NamedFunctionCall {
+                        loc: *loc,
+                        maybe_target: None,
+                        num_inputs: input_exprs.len(),
+                        num_call_block_inputs: 0,
+                    }
                 }
             }
             Not(loc, ..) => FlatExpr::Not(*loc),

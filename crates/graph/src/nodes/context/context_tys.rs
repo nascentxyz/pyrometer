@@ -45,6 +45,7 @@ pub struct ModifierState {
     pub parent_ctx: ContextNode,
     /// Renamed inputs based on the modifier
     pub renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
+    pub try_catch: bool,
 }
 
 impl ModifierState {
@@ -56,6 +57,7 @@ impl ModifierState {
         parent_ctx: ContextNode,
         parent_caller_ctx: ContextNode,
         renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
+        try_catch: bool,
     ) -> Self {
         Self {
             num,
@@ -64,6 +66,7 @@ impl ModifierState {
             parent_ctx,
             parent_caller_ctx,
             renamed_inputs,
+            try_catch,
         }
     }
 }
