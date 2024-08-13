@@ -8,13 +8,13 @@ contract A {
         uint mantissa;
     }
 
-    // function mulIf_(uint a, Double memory b) internal pure returns (uint) {
-    //     if (b.mantissa > 10) {
-    //         return mul_(a, 10) / doubleScale;
-    //     } else {
-    //         return mul_(a, b.mantissa) / doubleScale;
-    //     }
-    // }
+    function mulIf_(uint a, Double memory b) internal pure returns (uint) {
+        if (b.mantissa > 10) {
+            return mul_(a, 10) / doubleScale;
+        } else {
+            return mul_(a, b.mantissa) / doubleScale;
+        }
+    }
 
     function mul_(uint a, Double memory b) internal pure returns (uint) {
         return mul_(a, b.mantissa) / doubleScale;
@@ -30,8 +30,8 @@ contract A {
         require(ret == 10);
     }
 
-    // function pureChildrenFork(uint256 x) internal pure {
-    //     Double memory d = Double({mantissa: x});
-    //     mulIf_(10, d);
-    // }
+    function pureChildrenFork(uint256 x) internal pure {
+        Double memory d = Double({mantissa: x});
+        mulIf_(10, d);
+    }
 }
