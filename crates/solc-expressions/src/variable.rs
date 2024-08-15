@@ -1,4 +1,5 @@
 use crate::{assign::Assign, env::Env, ContextBuilder};
+use graph::AsDotStr;
 
 use graph::{
     elem::Elem,
@@ -81,29 +82,38 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 idxs[0]
             } else {
                 // disambiguate by scope
-                tracing::trace!("disambiguating by scope");
-                let in_scope = if let Some(contract) = ctx
-                    .maybe_associated_contract(self)
-                    .into_expr_err(ident.loc)?
-                {
-                    let mut all_storage_vars_tys = contract
-                        .all_storage_vars(self)
-                        .iter()
-                        .map(|i| i.0.into())
-                        .collect::<Vec<_>>();
-                    all_storage_vars_tys.sort();
-                    all_storage_vars_tys.dedup();
-                    all_storage_vars_tys
+                tracing::trace!("disambiguating by scope & location: {location:?}");
+                let new_idxs = idxs
+                    .iter()
+                    .filter(|idx| ctx.idx_is_visible(**idx, self).unwrap_or(false))
+                    .collect::<Vec<_>>();
+
+                if new_idxs.len() == 1 {
+                    *new_idxs[0]
                 } else {
-                    vec![]
-                };
-                if let Some(idx) = self.disambiguate(ctx, idxs, in_scope, location) {
-                    idx
-                } else {
-                    return Err(ExprErr::ParseError(
-                        ident.loc,
-                        "Unable to disambiguate variable".to_string(),
-                    ));
+                    let in_scope = if let Some(contract) = ctx
+                        .maybe_associated_contract(self)
+                        .into_expr_err(ident.loc)?
+                    {
+                        let mut all_storage_vars_tys = contract
+                            .all_storage_vars(self)
+                            .iter()
+                            .map(|i| i.0.into())
+                            .collect::<Vec<_>>();
+                        all_storage_vars_tys.sort();
+                        all_storage_vars_tys.dedup();
+                        all_storage_vars_tys
+                    } else {
+                        vec![]
+                    };
+                    if let Some(idx) = self.disambiguate(ctx, idxs, in_scope, location) {
+                        idx
+                    } else {
+                        return Err(ExprErr::ParseError(
+                            ident.loc,
+                            "Unable to disambiguate variable".to_string(),
+                        ));
+                    }
                 }
             };
 
@@ -224,18 +234,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         inscope_storage: Vec<NodeIdx>,
         location: Option<StorageLocation>,
     ) -> Option<NodeIdx> {
-        // disambiguate based on left hand side if it exists
-        if let Some(maybe_lhs) = ctx.underlying(self).ok()?.expr_ret_stack.first() {
-            tracing::trace!("Disambiguate based on lhs: {}", maybe_lhs.debug_str(self));
-            if let ExprRet::Single(lhs_idx) = maybe_lhs {
-                if let Some(var_ty) = VarType::try_from_idx(self, *lhs_idx) {
-                    if idxs.contains(&var_ty.ty_idx()) {
-                        return Some(var_ty.ty_idx());
-                    }
-                }
-            }
-        }
-
         // disambiguate based on storage location
         match location {
             Some(StorageLocation::Storage(..)) => {
@@ -381,6 +379,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     tmp_of: None,
                     dep_on: None,
                     is_return: false,
+                    is_fundamental: None,
                     ty,
                 };
                 let lhs = ContextVarNode::from(self.add_node(var));
@@ -411,6 +410,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     tmp_of: None,
                     dep_on: None,
                     is_return: false,
+                    is_fundamental: None,
                     ty,
                 };
                 let lhs = ContextVarNode::from(self.add_node(var));
@@ -569,6 +569,14 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     }
                 }
 
+                // we ignore any errors here
+
+                let _ = new_cvar.ty.set_range(
+                    Elem::from(cvar_node.latest_version_or_inherited_in_ctx(ctx, self)).into(),
+                );
+
+                new_cvar.is_fundamental = None;
+
                 new_cvar.loc = Some(loc);
                 new_cvarnode = self.add_node(new_cvar);
                 if old_ctx != ctx {
@@ -635,6 +643,11 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
                 }
             } else {
+                // we ignore any errors here
+                let _ = new_cvar.ty.set_range(
+                    Elem::from(cvar_node.latest_version_or_inherited_in_ctx(ctx, self)).into(),
+                );
+
                 new_cvar.loc = Some(loc);
                 new_cvarnode = self.add_node(new_cvar);
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));

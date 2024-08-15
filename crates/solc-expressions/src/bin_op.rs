@@ -327,6 +327,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     dep_on: Some(lhs_cvar.dependent_on(self, true).into_expr_err(loc)?),
                     is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?,
                     is_return: false,
+                    is_fundamental: None,
                     ty: lhs_cvar.underlying(self).into_expr_err(loc)?.ty.clone(),
                 };
 
@@ -391,7 +392,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         }
 
         // otherwise, require rhs != 0
-        let tmp_rhs = self.advance_var_in_ctx(rhs, loc, ctx)?;
+        let tmp_rhs = self.advance_var_in_ctx(arena, rhs, loc, ctx)?;
         let zero_node = self.add_concrete_var(ctx, Concrete::from(U256::ZERO), loc)?;
 
         if self

@@ -314,6 +314,42 @@ impl ContractNode {
         structs
     }
 
+    pub fn visible_enums(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<EnumNode> {
+        let mut enums = self.enums(analyzer);
+        let inherited = self.all_inherited_contracts(analyzer);
+        enums.extend(
+            inherited
+                .iter()
+                .flat_map(|c| c.enums(analyzer))
+                .collect::<Vec<_>>(),
+        );
+        enums
+    }
+
+    pub fn visible_errors(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<ErrorNode> {
+        let mut errors = self.errs(analyzer);
+        let inherited = self.all_inherited_contracts(analyzer);
+        errors.extend(
+            inherited
+                .iter()
+                .flat_map(|c| c.errs(analyzer))
+                .collect::<Vec<_>>(),
+        );
+        errors
+    }
+
+    pub fn visible_tys(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<TyNode> {
+        let mut tys = self.tys(analyzer);
+        let inherited = self.all_inherited_contracts(analyzer);
+        tys.extend(
+            inherited
+                .iter()
+                .flat_map(|c| c.tys(analyzer))
+                .collect::<Vec<_>>(),
+        );
+        tys
+    }
+
     pub fn visible_local_nodes(&self, analyzer: &(impl GraphBackend + Search)) -> Vec<NodeIdx> {
         let mut nodes = self
             .structs(analyzer)

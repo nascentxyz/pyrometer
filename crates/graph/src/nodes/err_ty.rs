@@ -73,6 +73,16 @@ impl AsDotStr for ErrorNode {
 
 impl Fielded for ErrorNode {
     type Field = ErrorParamNode;
+
+    fn find_field(&self, analyzer: &impl GraphBackend, field_name: &str) -> Option<ErrorParamNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::ErrorParam == *edge.weight())
+            .map(|edge| ErrorParamNode::from(edge.source()))
+            .find(|field_node| field_node.name(analyzer).unwrap() == field_name)
+    }
+
     fn fields(&self, analyzer: &impl GraphBackend) -> Vec<ErrorParamNode> {
         let mut fields: Vec<_> = analyzer
             .graph()
@@ -165,6 +175,15 @@ impl ErrorParamNode {
                 "Node type confusion: expected node to be ErrorParam but it was: {e:?}"
             ))),
         }
+    }
+
+    pub fn name(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
+        Ok(self
+            .underlying(analyzer)?
+            .name
+            .clone()
+            .expect("Unnamed parameter error")
+            .name)
     }
 }
 

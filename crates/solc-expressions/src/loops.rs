@@ -34,6 +34,7 @@ pub trait Looper:
             self,
             None,
             parent_ctx.contract_id(self).unwrap(),
+            true,
         )
         .into_expr_err(loc)?;
         loop_ctx.set_child_call(ret_ctx, self).into_expr_err(loc)?;
@@ -51,7 +52,8 @@ pub trait Looper:
                     .default_range(self)
                     .into_expr_err(loc)?
                 {
-                    let new_inheritor_var = self.advance_var_in_ctx(inheritor_var, loc, ret_ctx)?;
+                    let new_inheritor_var =
+                        self.advance_var_in_ctx(arena, inheritor_var, loc, ret_ctx)?;
                     new_inheritor_var
                         .set_range_min(self, arena, r.min)
                         .into_expr_err(loc)?;
@@ -71,7 +73,7 @@ pub trait Looper:
                     .into_expr_err(loc)?
                 {
                     let new_inheritor_var =
-                        self.advance_var_in_ctx(var.latest_version(self), loc, ret_ctx)?;
+                        self.advance_var_in_ctx(arena, var.latest_version(self), loc, ret_ctx)?;
                     new_inheritor_var
                         .set_range_min(self, arena, r.min)
                         .into_expr_err(loc)?;

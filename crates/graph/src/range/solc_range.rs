@@ -637,18 +637,18 @@ impl Range<Concrete> for SolcRange {
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Self::ElemTy, GraphError> {
-        self.range_min()
-            .flatten(false, analyzer, arena)?
-            .simplify_minimize(analyzer, arena)
+        tracing::trace!("flattening min");
+        let flattened = self.range_min().flatten(false, analyzer, arena)?;
+        tracing::trace!("simplifying flattened min");
+        flattened.simplify_minimize(analyzer, arena)
     }
     fn simplified_range_max(
         &self,
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Self::ElemTy, GraphError> {
-        self.range_max()
-            .flatten(true, analyzer, arena)?
-            .simplify_maximize(analyzer, arena)
+        let flattened = self.range_max().flatten(true, analyzer, arena)?;
+        flattened.simplify_maximize(analyzer, arena)
     }
 
     fn range_exclusions(&self) -> Vec<Self::ElemTy> {

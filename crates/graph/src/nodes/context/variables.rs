@@ -1,9 +1,10 @@
 use crate::{
-    nodes::{ContextNode, ContextVarNode, EnvCtxNode, ExprRet, VarNode},
+    elem::Elem,
+    nodes::{Concrete, ContextNode, ContextVarNode, EnvCtxNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode,
 };
 use petgraph::Direction;
-use shared::GraphError;
+use shared::{GraphError, RangeArena};
 
 use petgraph::visit::EdgeRef;
 use solang_parser::pt::Loc;
@@ -35,6 +36,24 @@ impl ContextNode {
                 .rev()
                 .enumerate()
                 .map(|(i, elem)| format!("{i}. {}", elem.debug_str(analyzer)))
+                .collect::<Vec<_>>()
+        ))
+    }
+
+    pub fn debug_expr_stack_str_ranged(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<String, GraphError> {
+        let underlying_mut = self.underlying(analyzer)?;
+        Ok(format!(
+            "{:#?}",
+            underlying_mut
+                .expr_ret_stack
+                .iter()
+                .rev()
+                .enumerate()
+                .map(|(i, elem)| format!("{i}. {}", elem.debug_str_ranged(analyzer, arena)))
                 .collect::<Vec<_>>()
         ))
     }
@@ -87,6 +106,25 @@ impl ContextNode {
             .vars
             .get(name)
             .copied()
+    }
+
+    pub fn return_var_by_name(
+        &self,
+        analyzer: &impl GraphBackend,
+        name: &str,
+    ) -> Option<ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|e| matches!(e.weight(), Edge::Context(ContextEdge::Variable)))
+            .map(|e| ContextVarNode::from(e.source()))
+            .find(|var| {
+                if let Ok(var) = var.underlying(analyzer) {
+                    var.is_return && var.name == name
+                } else {
+                    false
+                }
+            })
     }
 
     pub fn tmp_var_by_name(
@@ -157,6 +195,34 @@ impl ContextNode {
 
         if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
             parent.var_by_name_or_recurse(analyzer, name)
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn return_var_by_name_or_recurse(
+        &self,
+        analyzer: &impl GraphBackend,
+        name: &str,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        if let Some(var) = self.var_by_name(analyzer, name) {
+            if var.underlying(analyzer)?.is_return {
+                return Ok(Some(var));
+            }
+        }
+
+        if let Some(var) = self.return_var_by_name(analyzer, name) {
+            return Ok(Some(var));
+        }
+
+        if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
+            if let Some(in_parent) = parent.return_var_by_name_or_recurse(analyzer, name)? {
+                return Ok(Some(in_parent));
+            }
+        }
+
+        if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
+            parent.return_var_by_name_or_recurse(analyzer, name)
         } else {
             Ok(None)
         }

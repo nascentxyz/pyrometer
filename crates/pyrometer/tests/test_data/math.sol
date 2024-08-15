@@ -555,14 +555,14 @@ contract AssignMath {
 
     function pre_conc() public pure {
         (uint256 y, uint256 x) = preincrement(100);
-        require(y == 101);
-        require(x == 101);
+        "pyro::variable::y::range::[101,101]";
+        "pyro::variable::x::range::[101,101]";
     }
 
     function post_conc() public pure {
         (uint256 y, uint256 x) = postincrement(100);
-        require(y == 100);
-        require(x == 101);
+        "pyro::variable::y::range::[100,100]";
+        "pyro::variable::x::range::[101,101]";
     }
 
     function pre_deconc() public pure {

@@ -1,4 +1,6 @@
-use crate::{BuiltinAccess, ContractAccess, EnumAccess, Env, ListAccess, StructAccess};
+use crate::{
+    BuiltinAccess, ContractAccess, EnumAccess, Env, ErrorAccess, ListAccess, StructAccess,
+};
 use graph::ContextEdge;
 use graph::Edge;
 
@@ -271,6 +273,9 @@ pub trait MemberAccess:
         match cvar.ty(self).into_expr_err(loc)? {
             VarType::User(TypeNode::Struct(struct_node), _) => {
                 self.struct_var_member_access(ctx, cvar, *struct_node, name, loc)
+            }
+            VarType::User(TypeNode::Error(err_node), _) => {
+                self.error_var_member_access(ctx, cvar, *err_node, name, loc)
             }
             VarType::User(TypeNode::Enum(enum_node), _) => {
                 self.enum_member_access(ctx, *enum_node, name, loc)

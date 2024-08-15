@@ -45,6 +45,7 @@ pub trait ConstructorCaller:
             is_return: false,
             tmp_of: None,
             dep_on: None,
+            is_fundamental: None,
             ty: ty.expect("No type for node"),
         };
 
@@ -61,6 +62,7 @@ pub trait ConstructorCaller:
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::try_from_idx(self, u256).unwrap(),
         };
 

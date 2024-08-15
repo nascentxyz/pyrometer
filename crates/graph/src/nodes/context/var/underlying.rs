@@ -24,6 +24,7 @@ pub struct ContextVar {
     pub dep_on: Option<Vec<ContextVarNode>>,
     pub is_symbolic: bool,
     pub is_return: bool,
+    pub is_fundamental: Option<bool>,
     pub ty: VarType,
 }
 
@@ -97,6 +98,7 @@ impl ContextVar {
                 deps.extend(rhs_cvar.dependent_on(analyzer, true)?);
                 Some(deps)
             },
+            is_fundamental: None,
             ty: lhs_cvar.underlying(analyzer)?.ty.clone(),
         })
     }
@@ -122,6 +124,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: false,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::Concrete(concrete_node),
         })
     }
@@ -152,11 +155,12 @@ impl ContextVar {
         ctx: ContextNode,
         loc: Loc,
     ) -> Result<Self, GraphError> {
+        let tmp_num = ctx.new_tmp(analyzer)?;
         let mut new_tmp = self.clone();
         new_tmp.loc = Some(loc);
         new_tmp.is_tmp = true;
-        new_tmp.name = format!("tmp{}({})", ctx.new_tmp(analyzer)?, self.name);
-        new_tmp.display_name = format!("tmp_{}", self.display_name);
+        new_tmp.name = format!("tmp{tmp_num}({})", self.name);
+        new_tmp.display_name = format!("tmp_{tmp_num}({})", self.display_name);
         Ok(new_tmp)
     }
 
@@ -175,6 +179,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::User(
                 TypeNode::Contract(contract_node),
                 SolcRange::try_from_builtin(&Builtin::Address),
@@ -202,6 +207,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::User(TypeNode::Struct(struct_node), None),
         })
     }
@@ -226,6 +232,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::try_from_idx(analyzer, ty_node.0.into()).unwrap(),
         })
     }
@@ -245,6 +252,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: false,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::try_from_idx(analyzer, bn_node.into()).unwrap(),
         })
     }
@@ -523,6 +531,7 @@ impl ContextVar {
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty,
             })
         } else {
@@ -597,6 +606,7 @@ impl ContextVar {
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty,
             })
         } else {
@@ -625,6 +635,7 @@ impl ContextVar {
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty,
             })
         } else {
@@ -655,6 +666,7 @@ impl ContextVar {
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty,
             })
         } else {
@@ -680,6 +692,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::User(
                 TypeNode::Enum(enum_node),
                 Some(enum_node.range_from_variant(variant, analyzer)?),
@@ -706,6 +719,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: index.underlying(analyzer)?.is_symbolic,
             is_return: false,
+            is_fundamental: None,
             ty: parent_var.dynamic_underlying_ty(analyzer)?,
         })
     }
@@ -724,6 +738,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: false,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::User(TypeNode::Func(func), None),
         })
     }
@@ -744,6 +759,7 @@ impl ContextVar {
                     dep_on: None,
                     is_symbolic: true,
                     is_return: false,
+                    is_fundamental: None,
                     ty,
                 })
             } else {
@@ -770,6 +786,7 @@ impl ContextVar {
                     dep_on: None,
                     is_symbolic: true,
                     is_return: true,
+                    is_fundamental: None,
                     ty,
                 })
             } else {
@@ -802,6 +819,7 @@ impl ContextVar {
                 dep_on: None,
                 is_symbolic: true,
                 is_return: true,
+                is_fundamental: None,
                 ty,
             }))
         } else {

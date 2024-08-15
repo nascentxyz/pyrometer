@@ -1,14 +1,11 @@
 use graph::{
-    elem::{Elem, RangeElem},
-    nodes::{
-        Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, Error, ErrorParam, ExprRet,
-    },
-    AnalyzerBackend, ContextEdge, Edge, SolcRange, VarType,
+    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, Error, ErrorParam},
+    AnalyzerBackend, ContextEdge, Edge,
 };
-use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
+use shared::{ExprErr, IntoExprErr};
 
 use alloy_primitives::U256;
-use solang_parser::pt::{Expression, Identifier, Loc};
+use solang_parser::pt::{Identifier, Loc};
 
 impl<T> SolcError for T where
     T: AnalyzerBackend<ExprErr = ExprErr, ExecError = Error, ExecErrorParam = ErrorParam> + Sized
@@ -141,7 +138,6 @@ impl ErrType {
                 analyzer.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
                 Ok(cvar.into())
             }
-            _ => todo!(),
         }
     }
 }

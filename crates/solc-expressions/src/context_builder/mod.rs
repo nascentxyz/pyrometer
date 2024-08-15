@@ -94,8 +94,10 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                             target_var.ty(self).unwrap().as_string(self).unwrap(),
                             ctx.path(self),
                         );
+                        let needs_forcible = latest.ty_eq(&target_var, self).into_expr_err(loc);
+                        let needs_forcible = self.add_if_err(needs_forcible).unwrap_or(true);
                         let next = self
-                            .advance_var_in_ctx_forcible(latest, loc, ctx, true)
+                            .advance_var_in_ctx_forcible(latest, loc, ctx, needs_forcible)
                             .unwrap();
                         let res = next.cast_from(&target_var, self, arena).into_expr_err(loc);
                         self.add_if_err(res);

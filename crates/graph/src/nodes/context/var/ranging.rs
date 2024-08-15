@@ -130,6 +130,7 @@ impl ContextVarNode {
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
+        self.cache_is_fundamental(analyzer)?;
         if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             // range.cache_flatten(analyzer)?;
             range.cache_eval(analyzer, arena)?;
@@ -143,6 +144,7 @@ impl ContextVarNode {
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
+        self.cache_is_fundamental(analyzer)?;
         if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
             range.cache_flatten(analyzer, arena)?;
             self.set_range(analyzer, range)?;

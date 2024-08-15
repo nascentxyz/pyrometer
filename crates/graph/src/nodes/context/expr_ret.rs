@@ -1,7 +1,7 @@
 use crate::{
     nodes::{context::ContextVarNode, Concrete},
     range::elem::Elem,
-    AsDotStr, GraphBackend, Node, VarType,
+    AsDotStr, GraphBackend, Node, Range, VarType,
 };
 use shared::{GraphError, NodeIdx, RangeArena};
 
@@ -64,6 +64,56 @@ impl ExprRet {
                         .as_string(analyzer)
                         .unwrap()
                 ),
+                e => format!("idx_{}: {:?}", inner.index(), e),
+            },
+            ExprRet::Multi(inner) => {
+                format!(
+                    "[{}]",
+                    inner
+                        .iter()
+                        .map(|i| i.debug_str(analyzer))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            ExprRet::CtxKilled(kind) => format!("CtxKilled({:?}", kind),
+            ExprRet::Null => "<null>".to_string(),
+        }
+    }
+
+    pub fn debug_str_ranged(
+        &self,
+        analyzer: &impl GraphBackend<Node = Node>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
+        match self {
+            ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => match analyzer.node(*inner) {
+                Node::ContextVar(_) => {
+                    let range_min = if let Some(range) =
+                        ContextVarNode::from(*inner).range(analyzer).unwrap()
+                    {
+                        format!("{}", range.simplified_range_min(analyzer, arena).unwrap())
+                    } else {
+                        "".to_string()
+                    };
+                    let range_max = if let Some(range) =
+                        ContextVarNode::from(*inner).range(analyzer).unwrap()
+                    {
+                        format!("{}", range.simplified_range_max(analyzer, arena).unwrap())
+                    } else {
+                        "".to_string()
+                    };
+                    format!(
+                        "idx_{}: {} ({}) - [{range_min}, {range_max}]",
+                        inner.index(),
+                        ContextVarNode::from(*inner).display_name(analyzer).unwrap(),
+                        ContextVarNode::from(*inner)
+                            .ty(analyzer)
+                            .unwrap()
+                            .as_string(analyzer)
+                            .unwrap()
+                    )
+                }
                 e => format!("idx_{}: {:?}", inner.index(), e),
             },
             ExprRet::Multi(inner) => {

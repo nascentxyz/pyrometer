@@ -208,6 +208,14 @@ fn test_abstract() {
 }
 
 #[test]
+fn test_precedence() {
+    let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let path_str = format!("{manifest_dir}/tests/test_data/precedence.sol");
+    let sol = include_str!("./test_data/precedence.sol");
+    assert_no_ctx_killed(path_str, sol);
+}
+
+#[test]
 fn test_remapping_import() {
     let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let path_str = format!("{manifest_dir}/tests/test_data/remapping_import.sol");

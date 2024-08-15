@@ -130,6 +130,7 @@ pub trait ModifierCaller:
                         analyzer,
                         Some(modifier_state.clone()),
                         ctx.contract_id(analyzer).unwrap(),
+                        true,
                     )
                     .unwrap();
 
@@ -161,6 +162,7 @@ pub trait ModifierCaller:
                         analyzer,
                         None,
                         ctx.contract_id(analyzer).unwrap(),
+                        true,
                     )
                     .unwrap();
                     ctx.set_child_call(new_parent_subctx, analyzer)

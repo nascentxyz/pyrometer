@@ -1,7 +1,7 @@
 use crate::nodes::Context;
 use crate::{
     nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
-    AnalyzerBackend, GraphBackend, Node,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
 use shared::GraphError;
 
@@ -357,6 +357,7 @@ impl ContextNode {
                 analyzer,
                 None,
                 curr.contract_id(analyzer)?,
+                true,
             )?;
             let right_subctx = Context::add_subctx(
                 SubContextKind::Fork {
@@ -367,6 +368,7 @@ impl ContextNode {
                 analyzer,
                 None,
                 curr.contract_id(analyzer)?,
+                true,
             )?;
             curr.set_child_fork(left_subctx, right_subctx, analyzer)?;
 

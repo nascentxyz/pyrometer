@@ -162,9 +162,9 @@ pub trait FuncCaller:
             ctx.path(self)
         );
         if !entry_call {
-            if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
-                return Ok(());
-            }
+            // if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
+            //     return Ok(());
+            // }
         }
 
         // pseudocode:
@@ -318,6 +318,7 @@ pub trait FuncCaller:
         );
         if let Some(body) = func_node.underlying(self).into_expr_err(loc)?.body.clone() {
             // add return nodes into the subctx
+            let mut ret_vars = vec![];
             #[allow(clippy::unnecessary_to_owned)]
             func_node.returns(arena, self).into_iter().for_each(|ret| {
                 if let Some(var) =
@@ -326,6 +327,7 @@ pub trait FuncCaller:
                     let cvar = self.add_node(var);
                     callee_ctx.add_var(cvar.into(), self).unwrap();
                     self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
+                    ret_vars.push(cvar);
                 }
             });
 
@@ -339,12 +341,18 @@ pub trait FuncCaller:
                 .clone()
             {
                 if mod_state.num == 0 {
-                    return self.ctx_rets(arena, loc, mod_state.parent_caller_ctx, callee_ctx);
+                    return self.ctx_rets(
+                        arena,
+                        loc,
+                        mod_state.parent_caller_ctx,
+                        callee_ctx,
+                        try_catch,
+                    );
                 }
             }
 
             if callee_ctx != caller_ctx {
-                self.ctx_rets(arena, loc, caller_ctx, callee_ctx)
+                self.ctx_rets(arena, loc, caller_ctx, callee_ctx, try_catch)
             } else {
                 Ok(())
             }
@@ -360,6 +368,7 @@ pub trait FuncCaller:
                     .modifier_state
                     .clone(),
                 caller_ctx.contract_id(self).into_expr_err(loc)?,
+                true,
             )
             .unwrap();
 

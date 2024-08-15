@@ -81,7 +81,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                         .expect_single()
                         .unwrap();
 
-                    let accum_node = self.advance_var_in_ctx(accum_node.into(), loc, ctx)?;
+                    let accum_node = self.advance_var_in_ctx(arena, accum_node.into(), loc, ctx)?;
                     let name = accum_node.display_name(self).into_expr_err(loc)?;
                     let next_var = ContextVarNode::from(var);
                     let next_name = next_var.display_name(self).into_expr_err(loc)?;

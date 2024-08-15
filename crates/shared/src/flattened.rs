@@ -14,7 +14,7 @@ pub enum ExprFlag {
     Try,
     New(bool),
     Negate(bool),
-    Requirement(bool, bool),
+    Requirement(bool, bool, bool),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -43,8 +43,13 @@ pub enum FlatExpr {
     Try(Loc),
 
     Todo(Loc, &'static str),
+    CallSuccess(Loc),
+    TryErrCheck(Loc, &'static str),
     Pop,
+    Dup,
+    Swap,
 
+    InvalidSolidity(Loc, &'static str),
     Emit(Loc),
     TestCommand(Loc, &'static str),
 
@@ -55,8 +60,8 @@ pub enum FlatExpr {
         is_super: bool,
         named_args: bool,
     },
-    Requirement(Loc, bool),
-    CmpRequirement(Loc, bool),
+    Requirement(Loc, bool, bool),
+    CmpRequirement(Loc, bool, bool),
     Super(Loc, &'static str),
 
     Continue(Loc),
@@ -123,7 +128,7 @@ pub enum FlatExpr {
     MoreEqual(Loc),
     Equal(Loc),
     NotEqual(Loc),
-    And(Loc, usize, usize),
+    And(Loc, usize, usize, usize),
     Or(Loc),
 
     Assign(Loc),
@@ -341,6 +346,9 @@ impl FlatExpr {
             | While { loc, .. }
             | For { loc, .. }
             | Try(loc, ..)
+            | TryErrCheck(loc, ..)
+            | CallSuccess(loc, ..)
+            | InvalidSolidity(loc, ..)
             | VarDef(loc, ..)
             | Todo(loc, ..)
             | Emit(loc, ..)
@@ -423,6 +431,8 @@ impl FlatExpr {
 
             FunctionCallName { .. }
             | Pop
+            | Dup
+            | Swap
             | YulExpr(FlatYulExpr::YulStartBlock(_))
             | YulExpr(FlatYulExpr::YulEndBlock(_)) => None,
         }
@@ -552,7 +562,7 @@ impl TryFrom<&Expression> for FlatExpr {
             MoreEqual(loc, ..) => FlatExpr::MoreEqual(*loc),
             Equal(loc, ..) => FlatExpr::Equal(*loc),
             NotEqual(loc, ..) => FlatExpr::NotEqual(*loc),
-            And(loc, ..) => FlatExpr::And(*loc, 0, 0),
+            And(loc, ..) => FlatExpr::And(*loc, 0, 0, 0),
             Or(loc, ..) => FlatExpr::Or(*loc),
             Assign(loc, ..) => FlatExpr::Assign(*loc),
             AssignOr(loc, ..) => FlatExpr::AssignOr(*loc),

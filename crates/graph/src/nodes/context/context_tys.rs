@@ -1,4 +1,7 @@
-use crate::nodes::{ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode};
+use crate::nodes::{
+    ContextNode, ContextVarNode, ContractNode, EnumNode, ErrorNode, FunctionNode, StructNode,
+    TyNode,
+};
 use shared::NodeIdx;
 
 use solang_parser::pt::Loc;
@@ -85,6 +88,14 @@ pub struct ContextCache {
     pub visible_funcs: Option<Vec<FunctionNode>>,
     /// Visible structs from this context
     pub visible_structs: Option<Vec<StructNode>>,
+    /// Visible enums from this context
+    pub visible_enums: Option<Vec<EnumNode>>,
+    /// Visible errors from this context
+    pub visible_errors: Option<Vec<ErrorNode>>,
+    /// Visible contracts from this context
+    pub visible_contracts: Option<Vec<ContractNode>>,
+    /// Visible contracts from this context
+    pub visible_tys: Option<Vec<TyNode>>,
     /// First ancestor of this context
     pub first_ancestor: Option<ContextNode>,
     /// Associated source of this context

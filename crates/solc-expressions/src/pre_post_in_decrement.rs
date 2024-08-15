@@ -1,4 +1,4 @@
-use crate::variable::Variable;
+use crate::{variable::Variable, BinOp};
 
 use graph::{
     elem::*,
@@ -43,23 +43,15 @@ pub trait PrePostIncDecrement:
             ExprRet::Single(var) => {
                 // ie: a++;
                 let cvar = ContextVarNode::from(*var).latest_version_or_inherited_in_ctx(ctx, self);
-                let elem = Elem::from(cvar);
-                let one = Elem::from(Concrete::from(U256::from(1))).cast(elem.clone());
 
                 // if let Some(r) = cvar.range(self).into_expr_err(loc)? {
                 if increment {
                     if pre {
-                        let dup = cvar.as_tmp(self, ctx, loc).into_expr_err(loc)?;
-                        dup.set_range_min(self, arena, elem.clone() + one.clone())
-                            .into_expr_err(loc)?;
-                        dup.set_range_max(self, arena, elem.clone() + one.clone())
-                            .into_expr_err(loc)?;
-                        let new_cvar = self.advance_var_in_ctx_forcible(cvar, loc, ctx, true)?;
-                        new_cvar
-                            .set_range_min(self, arena, elem.clone() + one.clone())
-                            .into_expr_err(loc)?;
-                        new_cvar
-                            .set_range_max(self, arena, elem + one)
+                        let rhs = self.add_concrete_var(ctx, Concrete::from(U256::from(1)), loc)?;
+                        self.op(arena, loc, cvar, rhs, ctx, RangeOp::Add(false), true)?;
+                        let dup = cvar
+                            .latest_version(self)
+                            .as_tmp(self, ctx, loc)
                             .into_expr_err(loc)?;
                         ctx.push_expr(
                             ExprRet::Single(
@@ -71,18 +63,8 @@ pub trait PrePostIncDecrement:
                         Ok(())
                     } else {
                         let dup = cvar.as_tmp(self, ctx, loc).into_expr_err(loc)?;
-                        dup.set_range_min(self, arena, elem.clone())
-                            .into_expr_err(loc)?;
-                        dup.set_range_max(self, arena, elem.clone())
-                            .into_expr_err(loc)?;
-                        let new_cvar = self.advance_var_in_ctx_forcible(cvar, loc, ctx, true)?;
-                        let res = new_cvar
-                            .set_range_min(self, arena, elem.clone() + one.clone())
-                            .into_expr_err(loc);
-                        let _ = self.add_if_err(res);
-                        new_cvar
-                            .set_range_max(self, arena, elem + one)
-                            .into_expr_err(loc)?;
+                        let rhs = self.add_concrete_var(ctx, Concrete::from(U256::from(1)), loc)?;
+                        self.op(arena, loc, cvar, rhs, ctx, RangeOp::Add(false), true)?;
                         ctx.push_expr(
                             ExprRet::Single(
                                 dup.latest_version_or_inherited_in_ctx(ctx, self).into(),
@@ -93,17 +75,11 @@ pub trait PrePostIncDecrement:
                         Ok(())
                     }
                 } else if pre {
-                    let dup = cvar.as_tmp(self, ctx, loc).into_expr_err(loc)?;
-                    dup.set_range_min(self, arena, elem.clone() - one.clone())
-                        .into_expr_err(loc)?;
-                    dup.set_range_max(self, arena, elem.clone() - one.clone())
-                        .into_expr_err(loc)?;
-                    let new_cvar = self.advance_var_in_ctx_forcible(cvar, loc, ctx, true)?;
-                    new_cvar
-                        .set_range_min(self, arena, elem.clone() - one.clone())
-                        .into_expr_err(loc)?;
-                    new_cvar
-                        .set_range_max(self, arena, elem - one)
+                    let rhs = self.add_concrete_var(ctx, Concrete::from(U256::from(1)), loc)?;
+                    self.op(arena, loc, cvar, rhs, ctx, RangeOp::Sub(false), true)?;
+                    let dup = cvar
+                        .latest_version(self)
+                        .as_tmp(self, ctx, loc)
                         .into_expr_err(loc)?;
                     ctx.push_expr(
                         ExprRet::Single(dup.latest_version_or_inherited_in_ctx(ctx, self).into()),
@@ -113,19 +89,13 @@ pub trait PrePostIncDecrement:
                     Ok(())
                 } else {
                     let dup = cvar.as_tmp(self, ctx, loc).into_expr_err(loc)?;
-                    dup.set_range_min(self, arena, elem.clone())
-                        .into_expr_err(loc)?;
-                    dup.set_range_max(self, arena, elem.clone())
-                        .into_expr_err(loc)?;
-                    let new_cvar = self.advance_var_in_ctx_forcible(cvar, loc, ctx, true)?;
-                    new_cvar
-                        .set_range_min(self, arena, elem.clone() - one.clone())
-                        .into_expr_err(loc)?;
-                    new_cvar
-                        .set_range_max(self, arena, elem - one)
-                        .into_expr_err(loc)?;
-                    ctx.push_expr(ExprRet::Single(dup.into()), self)
-                        .into_expr_err(loc)?;
+                    let rhs = self.add_concrete_var(ctx, Concrete::from(U256::from(1)), loc)?;
+                    self.op(arena, loc, cvar, rhs, ctx, RangeOp::Sub(false), true)?;
+                    ctx.push_expr(
+                        ExprRet::Single(dup.latest_version_or_inherited_in_ctx(ctx, self).into()),
+                        self,
+                    )
+                    .into_expr_err(loc)?;
                     Ok(())
                 }
             }

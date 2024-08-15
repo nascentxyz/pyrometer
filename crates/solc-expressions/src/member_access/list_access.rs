@@ -61,6 +61,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         // search for latest length
         if let Some(len_var) = array.array_to_len_var(self) {
             let len_node = self.advance_var_in_ctx(
+                arena,
                 len_var.latest_version_or_inherited_in_ctx(ctx, self),
                 loc,
                 ctx,
@@ -89,13 +90,9 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         // no length variable, create one
         let name = format!("{}.length", array.name(self).into_expr_err(loc)?);
 
+        let array = array.latest_version_or_inherited_in_ctx(ctx, self);
         // we have to force here to avoid length <-> array recursion
-        let target_arr = self.advance_var_in_ctx_forcible(
-            array.latest_version_or_inherited_in_ctx(ctx, self),
-            loc,
-            ctx,
-            true,
-        )?;
+        let target_arr = self.advance_var_in_ctx_forcible(array, loc, ctx, true)?;
 
         // Create the range from the current length or default to [0, uint256.max]
         let len_min = Elem::from(array)
@@ -104,6 +101,13 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         let len_max = Elem::from(array)
             .get_length()
             .min(Elem::from(Concrete::from(U256::MAX)));
+        println!(
+            "len min: {len_min}, {}",
+            Elem::from(array)
+                .get_length()
+                .minimize(self, arena)
+                .unwrap()
+        );
         let range = SolcRange::new(len_min, len_max, vec![]);
 
         let len_var = ContextVar {
@@ -116,6 +120,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::BuiltIn(
                 BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
                 Some(range),
@@ -181,6 +186,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
                     range,

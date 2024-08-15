@@ -122,12 +122,16 @@ pub trait YulFuncCaller:
                 // we have to cast the inputs into an EVM word, which is effectively a u256.
                 let word_ty = self.builtin_or_add(Builtin::Uint(256));
                 let cast_ty = VarType::try_from_idx(self, word_ty).unwrap();
-                let lhs_paths = ContextVarNode::from(lhs.expect_single().into_expr_err(loc)?);
+                let lhs_paths = ContextVarNode::from(lhs.expect_single().into_expr_err(loc)?)
+                    .as_tmp(self, ctx, loc)
+                    .into_expr_err(loc)?;
                 lhs_paths
                     .cast_from_ty(cast_ty.clone(), self, arena)
                     .into_expr_err(loc)?;
 
-                let rhs_paths = ContextVarNode::from(rhs.expect_single().into_expr_err(loc)?);
+                let rhs_paths = ContextVarNode::from(rhs.expect_single().into_expr_err(loc)?)
+                    .as_tmp(self, ctx, loc)
+                    .into_expr_err(loc)?;
                 rhs_paths
                     .cast_from_ty(cast_ty, self, arena)
                     .into_expr_err(loc)?;
@@ -170,7 +174,7 @@ pub trait YulFuncCaller:
                     .swap_remove(0);
 
                 let res = ContextVarNode::from(result.expect_single().into_expr_err(loc)?);
-                let next = self.advance_var_in_ctx(res, loc, ctx)?;
+                let next = self.advance_var_in_ctx(arena, res, loc, ctx)?;
                 let expr = Elem::Expr(RangeExpr::new(
                     Elem::from(res),
                     RangeOp::Cast,
@@ -327,7 +331,9 @@ pub trait YulFuncCaller:
                     ) {
                         let res = latest_var.ty(self).into_expr_err(loc)?;
                         if let Some(r) = res.default_range(self).unwrap() {
-                            let new_var = self.advance_var_in_ctx(latest_var, loc, ctx).unwrap();
+                            let new_var = self
+                                .advance_var_in_ctx(arena, latest_var, loc, ctx)
+                                .unwrap();
                             let res = new_var.set_range_min(self, arena, r.min).into_expr_err(loc);
                             let _ = self.add_if_err(res);
                             let res = new_var.set_range_max(self, arena, r.max).into_expr_err(loc);
@@ -374,8 +380,9 @@ pub trait YulFuncCaller:
                         ) {
                             let res = latest_var.ty(self).into_expr_err(loc)?;
                             if let Some(r) = res.default_range(self).unwrap() {
-                                let new_var =
-                                    self.advance_var_in_ctx(latest_var, loc, ctx).unwrap();
+                                let new_var = self
+                                    .advance_var_in_ctx(arena, latest_var, loc, ctx)
+                                    .unwrap();
                                 let res =
                                     new_var.set_range_min(self, arena, r.min).into_expr_err(loc);
                                 let _ = self.add_if_err(res);

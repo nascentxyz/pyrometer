@@ -226,6 +226,78 @@ impl SubContextKind {
                 .clone(),
         };
 
+        let visible_errors = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => parent_ctx
+                .underlying(analyzer)?
+                .cache
+                .visible_errors
+                .clone(),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_errors
+                .clone(),
+        };
+
+        let visible_contracts = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => parent_ctx
+                .underlying(analyzer)?
+                .cache
+                .visible_contracts
+                .clone(),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_contracts
+                .clone(),
+        };
+
+        let visible_enums = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => {
+                parent_ctx.underlying(analyzer)?.cache.visible_enums.clone()
+            }
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_enums
+                .clone(),
+        };
+
+        let visible_tys = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => {
+                parent_ctx.underlying(analyzer)?.cache.visible_tys.clone()
+            }
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_tys
+                .clone(),
+        };
+
         let first_ancestor = match self {
             SubContextKind::ExternalFnCall { .. } => None,
             SubContextKind::InternalFnCall { .. } => None,
@@ -242,6 +314,10 @@ impl SubContextKind {
         Ok(ContextCache {
             visible_funcs,
             visible_structs,
+            visible_contracts,
+            visible_enums,
+            visible_errors,
+            visible_tys,
             first_ancestor,
             vars: Default::default(),
             tmp_vars: Default::default(),
@@ -518,11 +594,14 @@ impl Context {
         analyzer: &mut impl AnalyzerBackend,
         modifier_state: Option<ModifierState>,
         contract_id: ContractId,
+        set_edges: bool,
     ) -> Result<ContextNode, GraphError> {
         let ctx = Context::new_subctx(subctx_kind, loc, analyzer, modifier_state, contract_id)?;
         let ctx_node = ContextNode::from(analyzer.add_node(ctx));
-        if let Some(cont) = ctx_node.underlying(analyzer)?.continuation_of() {
-            analyzer.add_edge(ctx_node, cont, Edge::Context(ContextEdge::Continue("TODO")));
+        if set_edges {
+            if let Some(cont) = ctx_node.underlying(analyzer)?.continuation_of() {
+                analyzer.add_edge(ctx_node, cont, Edge::Context(ContextEdge::Continue("TODO")));
+            }
         }
         Ok(ctx_node)
     }
@@ -541,32 +620,48 @@ impl Context {
         analyzer: &mut impl AnalyzerBackend,
         parent_ctx: ContextNode,
         loc: Loc,
+        set_edges: bool,
     ) -> Result<(ContextNode, ContextNode), GraphError> {
         let contract_id = parent_ctx.contract_id(analyzer)?;
         let true_subctx_kind = SubContextKind::new_fork(parent_ctx, true);
-        let true_subctx = Context::add_subctx(true_subctx_kind, loc, analyzer, None, contract_id)?;
+        let true_subctx = Context::add_subctx(
+            true_subctx_kind,
+            loc,
+            analyzer,
+            None,
+            contract_id,
+            set_edges,
+        )?;
 
         let false_subctx_kind = SubContextKind::new_fork(parent_ctx, false);
-        let false_subctx =
-            Context::add_subctx(false_subctx_kind, loc, analyzer, None, contract_id)?;
+        let false_subctx = Context::add_subctx(
+            false_subctx_kind,
+            loc,
+            analyzer,
+            None,
+            contract_id,
+            set_edges,
+        )?;
 
         parent_ctx.set_child_fork(true_subctx, false_subctx, analyzer)?;
         let ctx_fork = analyzer.add_node(Node::ContextFork);
-        analyzer.add_edge(
-            ctx_fork,
-            parent_ctx,
-            Edge::Context(ContextEdge::ContextFork),
-        );
-        analyzer.add_edge(
-            NodeIdx::from(true_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
-        analyzer.add_edge(
-            NodeIdx::from(false_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
+        if set_edges {
+            analyzer.add_edge(
+                ctx_fork,
+                parent_ctx,
+                Edge::Context(ContextEdge::ContextFork),
+            );
+            analyzer.add_edge(
+                NodeIdx::from(true_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
+            analyzer.add_edge(
+                NodeIdx::from(false_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
+        }
         Ok((true_subctx, false_subctx))
     }
 
@@ -577,7 +672,7 @@ impl Context {
     ) -> Result<ContextNode, GraphError> {
         let contract_id = parent_ctx.contract_id(analyzer)?;
         let subctx_kind = SubContextKind::Loop { parent_ctx };
-        let loop_ctx = Context::add_subctx(subctx_kind, loc, analyzer, None, contract_id)?;
+        let loop_ctx = Context::add_subctx(subctx_kind, loc, analyzer, None, contract_id, true)?;
         parent_ctx.set_child_call(loop_ctx, analyzer)?;
         analyzer.add_edge(loop_ctx, parent_ctx, Edge::Context(ContextEdge::Loop));
         Ok(loop_ctx)

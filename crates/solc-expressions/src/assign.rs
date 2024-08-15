@@ -129,6 +129,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             )?
         } else {
             self.advance_var_in_ctx(
+                arena,
                 lhs_cvar.latest_version_or_inherited_in_ctx(ctx, self),
                 loc,
                 ctx,

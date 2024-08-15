@@ -184,7 +184,17 @@ impl ContextVarNode {
         Ok(global_first.is_storage(analyzer)? || global_first.is_calldata_input(analyzer))
     }
 
+    pub fn cache_is_fundamental(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        let res = self.is_fundamental(analyzer)?;
+        self.underlying_mut(analyzer)?.is_fundamental = Some(res);
+        Ok(())
+    }
+
     pub fn is_fundamental(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        if let Some(fund) = self.underlying(analyzer)?.is_fundamental {
+            return Ok(fund);
+        }
+
         let global_first = self.global_first_version(analyzer);
         let is_independent = self.is_independent(analyzer)?;
 

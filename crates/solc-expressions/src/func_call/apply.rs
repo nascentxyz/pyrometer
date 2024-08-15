@@ -301,8 +301,13 @@ pub trait FuncApplier:
             .iter()
             .enumerate()
             .map(|(i, ret)| {
+                println!("{:?}", ret.var());
                 let mut new_var = ret.var().underlying(self).unwrap().clone();
-                let new_name = format!("{}.{i}", func.loc_specified_name(self).unwrap());
+                let new_name = format!(
+                    "tmp_{}({}.{i})",
+                    target_ctx.new_tmp(self).unwrap(),
+                    func.loc_specified_name(self).unwrap()
+                );
                 tracing::trace!("handling apply return: {new_name}");
                 new_var.name.clone_from(&new_name);
                 new_var.display_name = new_name.clone();
@@ -311,16 +316,11 @@ pub trait FuncApplier:
                         range.take_flattened_range(self, arena).unwrap().into();
                     tracing::trace!(
                         "apply return {new_name} target range: [{}, {}]",
-                        range
-                            .simplified_range_min(self, arena)
-                            .unwrap()
-                            .to_range_string(false, self, arena)
-                            .s,
-                        range
-                            .simplified_range_max(self, arena)
-                            .unwrap()
-                            .to_range_string(false, self, arena)
-                            .s,
+                        range.range_min(),
+                        // .to_range_string(false, self, arena)
+                        // .s,
+                        range.range_max() // .to_range_string(false, self, arena)
+                                          // .s,
                     );
                     replacement_map.iter().for_each(|(replace, replacement)| {
                         range.replace_dep(*replace, replacement.0.clone(), self, arena);
@@ -635,10 +635,10 @@ pub trait FuncApplier:
                         .arenaize(self, arena)
                         .into_expr_err(loc)?;
 
-                    if let Some(next) = correct_input.next_version(self) {
-                        replacement_map
-                            .insert(next.0.into(), (replacement_as_elem.clone(), replacement));
-                    }
+                    // if let Some(next) = correct_input.next_version(self) {
+                    //     replacement_map
+                    //         .insert(next.0.into(), (replacement_as_elem.clone(), replacement));
+                    // }
                     replacement_map
                         .insert(correct_input.0.into(), (replacement_as_elem, replacement));
                 }

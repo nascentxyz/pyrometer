@@ -50,15 +50,6 @@ impl StructNode {
             .collect()
     }
 
-    pub fn find_field(&self, analyzer: &impl GraphBackend, field_name: &str) -> Option<FieldNode> {
-        analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter(|edge| Edge::Field == *edge.weight())
-            .map(|edge| FieldNode::from(edge.source()))
-            .find(|field_node| field_node.name(analyzer).unwrap() == field_name)
-    }
-
     pub fn maybe_associated_contract(&self, analyzer: &impl GraphBackend) -> Option<ContractNode> {
         analyzer
             .graph()
@@ -79,6 +70,16 @@ impl StructNode {
 
 impl Fielded for StructNode {
     type Field = FieldNode;
+
+    fn find_field(&self, analyzer: &impl GraphBackend, field_name: &str) -> Option<FieldNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Field == *edge.weight())
+            .map(|edge| FieldNode::from(edge.source()))
+            .find(|field_node| field_node.name(analyzer).unwrap() == field_name)
+    }
+
     fn fields(&self, analyzer: &impl GraphBackend) -> Vec<FieldNode> {
         let mut fields: Vec<_> = analyzer
             .graph()

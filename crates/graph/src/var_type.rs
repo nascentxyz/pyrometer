@@ -909,11 +909,11 @@ impl From<FunctionNode> for TypeNode {
 impl TypeNode {
     pub fn as_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         match self {
-            TypeNode::Contract(n) => n.name(analyzer),
-            TypeNode::Struct(n) => n.name(analyzer),
-            TypeNode::Enum(n) => n.name(analyzer),
-            TypeNode::Error(n) => n.name(analyzer),
-            TypeNode::Ty(n) => n.name(analyzer),
+            TypeNode::Contract(n) => Ok(format!("{} (Contract)", n.name(analyzer)?)),
+            TypeNode::Struct(n) => Ok(format!("{} (Struct)", n.name(analyzer)?)),
+            TypeNode::Enum(n) => Ok(format!("{} (Enum)", n.name(analyzer)?)),
+            TypeNode::Error(n) => Ok(format!("{} (Error)", n.name(analyzer)?)),
+            TypeNode::Ty(n) => Ok(format!("{} (Type Alias)", n.name(analyzer)?)),
             TypeNode::Func(n) => Ok(format!("function {}", n.name(analyzer)?)),
             TypeNode::Unresolved(n) => Ok(format!("UnresolvedType<{:?}>", analyzer.node(*n))),
         }

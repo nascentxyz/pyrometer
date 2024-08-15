@@ -70,9 +70,15 @@ pub trait PrecompileCaller:
                     .unwrap();
 
                 let subctx_kind = SubContextKind::new_fn_call(ctx, None, func_idx.into(), true);
-                let call_ctx =
-                    Context::add_subctx(subctx_kind, loc, self, None, ContractId::Address(addr))
-                        .into_expr_err(loc)?;
+                let call_ctx = Context::add_subctx(
+                    subctx_kind,
+                    loc,
+                    self,
+                    None,
+                    ContractId::Address(addr),
+                    true,
+                )
+                .into_expr_err(loc)?;
                 ctx.set_child_call(call_ctx, self).into_expr_err(loc)?;
                 let call_node = self.add_node(Node::FunctionCall);
                 self.add_edge(call_node, func_idx, Edge::Context(ContextEdge::Call));
@@ -111,6 +117,7 @@ pub trait PrecompileCaller:
                     self,
                     None,
                     ctx.contract_id(self).unwrap(),
+                    true,
                 )
                 .into_expr_err(loc)?;
                 call_ctx.set_child_call(ret_ctx, self).into_expr_err(loc)?;

@@ -31,7 +31,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         err: Option<ErrType>,
         loc: Loc,
     ) -> Result<(), ExprErr> {
-        println!("err: {err:#?}");
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
             (_, ExprRet::CtxKilled(..)) | (ExprRet::CtxKilled(..), _) => Ok(()),
@@ -79,10 +78,10 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 // ie: require(a == b);
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
-                let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
+                let new_lhs = self.advance_var_in_ctx(arena, lhs_cvar, loc, ctx)?;
                 let rhs_cvar =
                     ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
-                let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
+                let new_rhs = self.advance_var_in_ctx(arena, rhs_cvar, loc, ctx)?;
 
                 self.require(
                     arena,
@@ -270,6 +269,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
                     || new_rhs.is_symbolic(self).into_expr_err(loc)?,
                 is_return: false,
+                is_fundamental: None,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                     // we set the minimum to `true` so that if `elem` evaluates to false,
@@ -321,6 +321,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
                     || new_rhs.is_symbolic(self).into_expr_err(loc)?,
                 is_return: false,
+                is_fundamental: None,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                     // we set the minimum to `true` so that if `elem` evaluates to false,
@@ -790,8 +791,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     lhs_elem,
                 ));
 
-                let new_new_lhs = self.advance_var_in_ctx(new_lhs, loc, ctx)?;
-                let new_new_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
+                let new_new_lhs = self.advance_var_in_ctx(arena, new_lhs, loc, ctx)?;
+                let new_new_rhs = self.advance_var_in_ctx(arena, new_rhs, loc, ctx)?;
 
                 new_new_lhs
                     .set_range_min(self, arena, new_min.clone())
@@ -824,8 +825,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
-                let new_new_lhs = self.advance_var_in_ctx(new_lhs, loc, ctx)?;
-                let new_new_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
+                let new_new_lhs = self.advance_var_in_ctx(arena, new_lhs, loc, ctx)?;
+                let new_new_rhs = self.advance_var_in_ctx(arena, new_rhs, loc, ctx)?;
 
                 new_new_lhs
                     .latest_version_or_inherited_in_ctx(ctx, self)

@@ -168,13 +168,11 @@ pub fn exec_get_length(
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> Option<Elem<Concrete>> {
     if maximize {
-        let new = lhs_max.clone();
-        let new_max = new.simplify_maximize(analyzer, arena).ok()?;
+        let new_max = lhs_max.simplify_maximize(analyzer, arena).ok()?;
 
         new_max.range_get_length()
     } else {
         let new_min = lhs_min.simplify_minimize(analyzer, arena).ok()?;
-
         new_min.range_get_length()
     }
 }

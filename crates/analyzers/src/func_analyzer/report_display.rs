@@ -72,14 +72,6 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
         );
 
         report.add_labels(self.labels(analyzer, arena));
-        if let Some((killed_span, kind)) = &self.func_var_bound_analysis.ctx_killed {
-            report = report.with_label(
-                Label::new(killed_span.clone())
-                    .with_message(kind.analysis_str().fg(killed_kind_color(kind)))
-                    .with_color(killed_kind_color(kind)),
-            );
-        }
-
         let mut reports = vec![report.finish()];
 
         reports.extend(self.func_var_bound_analysis.reports_for_forks(

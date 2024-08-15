@@ -207,8 +207,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
             curr_ctx.contract_id(self).into_expr_err(loc)?
         };
 
-        let callee_ctx =
-            Context::add_subctx(subctx_kind, loc, self, modifier_state, id).into_expr_err(loc)?;
+        let callee_ctx = Context::add_subctx(subctx_kind, loc, self, modifier_state, id, true)
+            .into_expr_err(loc)?;
         curr_ctx
             .set_child_call(callee_ctx, self)
             .into_expr_err(loc)?;
@@ -336,6 +336,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         loc: Loc,
         caller_ctx: ContextNode,
         callee_ctx: ContextNode,
+        try_catch: bool,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
             "Handling function call return for: {}, {}, depth: {:?}, {:?}",
@@ -367,8 +368,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
 
         match callee_ctx.underlying(self).into_expr_err(loc)?.child {
             Some(CallFork::Fork(w1, w2)) => {
-                self.ctx_rets(arena, loc, caller_ctx, w1)?;
-                self.ctx_rets(arena, loc, caller_ctx, w2)?;
+                self.ctx_rets(arena, loc, caller_ctx, w1, try_catch)?;
+                self.ctx_rets(arena, loc, caller_ctx, w2, try_catch)?;
                 Ok(())
             }
             Some(CallFork::Call(c))
@@ -376,15 +377,22 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                     >= caller_ctx.underlying(self).into_expr_err(loc)?.depth =>
             {
                 // follow rabbit hole
-                self.ctx_rets(arena, loc, caller_ctx, c)?;
+                self.ctx_rets(arena, loc, caller_ctx, c, try_catch)?;
                 Ok(())
             }
             _ => {
+                println!(
+                    "RET TRY_CATCH: {try_catch}, {:#?}",
+                    callee_ctx.return_nodes(self).unwrap()
+                );
                 if callee_ctx.is_anonymous_fn_call(self).into_expr_err(loc)? {
                     return Ok(());
                 }
 
-                if callee_ctx.is_killed(self).into_expr_err(loc)? {
+                if !try_catch
+                    && callee_ctx.is_killed(self).into_expr_err(loc)?
+                    && !callee_ctx.is_graceful_ended(self).unwrap()
+                {
                     return Ok(());
                 }
 
@@ -408,6 +416,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         .modifier_state
                         .clone(),
                     caller_ctx.contract_id(self).into_expr_err(loc)?,
+                    true,
                 )
                 .into_expr_err(loc)?;
                 let res = callee_ctx

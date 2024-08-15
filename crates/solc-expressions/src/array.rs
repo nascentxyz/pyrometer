@@ -70,6 +70,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             is_return: false,
             tmp_of: None,
             dep_on: None,
+            is_fundamental: None,
             ty: VarType::try_from_idx(self, arr.0.into()).unwrap(),
         };
         new_arr.set_range(From::from(new_range));
@@ -168,7 +169,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         length_requirement: bool,
         return_var: bool,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
-        let idx = self.advance_var_in_ctx(index, loc, ctx)?;
+        let idx = self.advance_var_in_ctx(arena, index, loc, ctx)?;
         if length_requirement
             && !parent.is_mapping(self).into_expr_err(loc)?
             && parent.is_indexable(self).into_expr_err(loc)?
@@ -194,7 +195,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         );
         if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
             let index_var = index_var.latest_version_or_inherited_in_ctx(ctx, self);
-            let index_var = self.advance_var_in_ctx(index_var, loc, ctx)?;
+            let index_var = self.advance_var_in_ctx(arena, index_var, loc, ctx)?;
             if !return_var {
                 ctx.push_expr(ExprRet::Single(index_var.into()), self)
                     .into_expr_err(loc)?;
@@ -230,6 +231,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 },
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty,
             };
 
@@ -256,8 +258,12 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 let max = Elem::from(parent)
                     .get_index(index.into())
                     .min(ContextVarNode::from(idx_access_node).into()); //.range_max(self).unwrap().unwrap());
-                let idx_access_cvar =
-                    self.advance_var_in_ctx(ContextVarNode::from(idx_access_node), loc, ctx)?;
+                let idx_access_cvar = self.advance_var_in_ctx(
+                    arena,
+                    ContextVarNode::from(idx_access_node),
+                    loc,
+                    ctx,
+                )?;
 
                 idx_access_cvar
                     .set_range_min(self, arena, min)
@@ -314,6 +320,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             if let Some(index) = maybe_index_access.index_access_to_index(self) {
                 // Found the associated index
                 let next_arr = self.advance_var_in_ctx(
+                    arena,
                     arr.latest_version_or_inherited_in_ctx(ctx, self),
                     loc,
                     ctx,
@@ -368,6 +375,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         backing_arr: ContextVarNode,
     ) -> Result<(), ExprErr> {
         let next_arr = self.advance_var_in_ctx(
+            arena,
             backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
             loc,
             ctx,
@@ -403,6 +411,7 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         backing_arr: ContextVarNode,
     ) -> Result<(), ExprErr> {
         let next_arr = self.advance_var_in_ctx(
+            arena,
             backing_arr.latest_version_or_inherited_in_ctx(ctx, self),
             loc,
             ctx,

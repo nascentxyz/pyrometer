@@ -1,7 +1,7 @@
 use crate::{
     nodes::{
-        ContextNode, ContractId, ContractNode, FunctionNode, SourceUnitNode, SourceUnitPartNode,
-        StructNode,
+        ContextNode, ContractId, ContractNode, EnumNode, ErrorNode, FunctionNode, SourceUnitNode,
+        SourceUnitPartNode, StructNode, TyNode,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend,
 };
@@ -280,6 +280,181 @@ impl ContextNode {
 
         self.underlying_mut(analyzer)?.cache.visible_structs = Some(structs.clone());
         Ok(structs)
+    }
+
+    /// Gets all visible contracts
+    pub fn visible_contracts(
+        &self,
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
+    ) -> Result<Vec<ContractNode>, GraphError> {
+        // TODO: filter privates
+        if let Some(vis) = &self.underlying(analyzer)?.cache.visible_contracts {
+            return Ok(vis.clone());
+        }
+
+        if let Some(src) = self.maybe_associated_source(analyzer) {
+            let mut cons = src.visible_contracts(analyzer)?;
+            cons.sort();
+            cons.dedup();
+
+            let mut inaccessible: Vec<String> = vec![];
+            inaccessible.extend(
+                self.visible_structs(analyzer)?
+                    .iter()
+                    .map(|user_ty| user_ty.name(analyzer))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+
+            inaccessible.extend(
+                self.visible_enums(analyzer)?
+                    .iter()
+                    .map(|user_ty| user_ty.name(analyzer))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+
+            inaccessible.extend(
+                self.visible_tys(analyzer)?
+                    .iter()
+                    .map(|user_ty| user_ty.name(analyzer))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+
+            inaccessible.extend(
+                self.visible_errors(analyzer)?
+                    .iter()
+                    .map(|user_ty| user_ty.name(analyzer))
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+
+            let cons = cons
+                .into_iter()
+                .filter(|con| {
+                    if let Ok(Some(name)) = con.maybe_name(analyzer) {
+                        !inaccessible.contains(&name)
+                    } else {
+                        true
+                    }
+                })
+                .collect::<Vec<_>>();
+
+            self.underlying_mut(analyzer)?.cache.visible_contracts = Some(cons.clone());
+            Ok(cons)
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    /// Gets all visible enums
+    pub fn visible_enums(
+        &self,
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
+    ) -> Result<Vec<EnumNode>, GraphError> {
+        // TODO: filter privates
+        if let Some(vis) = &self.underlying(analyzer)?.cache.visible_enums {
+            return Ok(vis.clone());
+        }
+
+        let Some(source) = self.maybe_associated_source(analyzer) else {
+            return Ok(vec![]);
+        };
+
+        let mut enums = source.visible_enums(analyzer)?;
+        let contract = self.associated_contract(analyzer)?;
+        let contract_visible = contract.visible_enums(analyzer);
+        enums.extend(contract_visible);
+
+        enums.sort();
+        enums.dedup();
+
+        self.underlying_mut(analyzer)?.cache.visible_enums = Some(enums.clone());
+        Ok(enums)
+    }
+
+    pub fn visible_errors(
+        &self,
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
+    ) -> Result<Vec<ErrorNode>, GraphError> {
+        // TODO: filter privates
+        if let Some(vis) = &self.underlying(analyzer)?.cache.visible_errors {
+            return Ok(vis.clone());
+        }
+
+        let Some(source) = self.maybe_associated_source(analyzer) else {
+            return Ok(vec![]);
+        };
+
+        let mut errors = source.visible_errors(analyzer)?;
+        let contract = self.associated_contract(analyzer)?;
+        let contract_visible = contract.visible_errors(analyzer);
+        errors.extend(contract_visible);
+
+        errors.sort();
+        errors.dedup();
+
+        self.underlying_mut(analyzer)?.cache.visible_errors = Some(errors.clone());
+        Ok(errors)
+    }
+
+    /// Gets all visible enums
+    pub fn visible_tys(
+        &self,
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
+    ) -> Result<Vec<TyNode>, GraphError> {
+        // TODO: filter privates
+        if let Some(vis) = &self.underlying(analyzer)?.cache.visible_tys {
+            return Ok(vis.clone());
+        }
+
+        let Some(source) = self.maybe_associated_source(analyzer) else {
+            return Ok(vec![]);
+        };
+
+        let mut tys = source.visible_tys(analyzer)?;
+        let contract = self.associated_contract(analyzer)?;
+        let contract_visible = contract.visible_tys(analyzer);
+        tys.extend(contract_visible);
+
+        tys.sort();
+        tys.dedup();
+
+        self.underlying_mut(analyzer)?.cache.visible_tys = Some(tys.clone());
+        Ok(tys)
+    }
+
+    pub fn idx_is_visible(
+        &self,
+        node_idx: NodeIdx,
+        analyzer: &mut impl AnalyzerBackend<Edge = Edge>,
+    ) -> Result<bool, GraphError> {
+        if self
+            .visible_structs(analyzer)?
+            .contains(&StructNode::from(node_idx))
+        {
+            return Ok(true);
+        }
+
+        if self
+            .visible_contracts(analyzer)?
+            .contains(&ContractNode::from(node_idx))
+        {
+            return Ok(true);
+        }
+
+        if self
+            .visible_enums(analyzer)?
+            .contains(&EnumNode::from(node_idx))
+        {
+            return Ok(true);
+        }
+
+        if self
+            .visible_errors(analyzer)?
+            .contains(&ErrorNode::from(node_idx))
+        {
+            return Ok(true);
+        }
+
+        return Ok(false);
     }
 
     /// Gets the associated function for the context

@@ -21,12 +21,13 @@ use graph::{
 };
 use shared::{
     post_to_site, string_to_static, ElseOrDefault, ExprErr, ExprFlag, FlatExpr, FlatYulExpr,
-    GraphError, IfElseChain, IntoExprErr, RangeArena, USE_DEBUG_SITE,
+    GraphError, IfElseChain, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
 };
 
 use alloy_primitives::U256;
 use solang_parser::pt::{
-    CodeLocation, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
+    CatchClause, CodeLocation, Expression, Identifier, Loc, Statement, VariableDeclaration,
+    YulExpression, YulStatement,
 };
 
 use std::collections::BTreeMap;
@@ -117,7 +118,7 @@ pub trait Flatten:
 
                 // do the false condition first, and take it off the stack, do the true condition, then add this back
                 match cmp {
-                    FlatExpr::And(loc, rhs_start, rhs_end) => {
+                    FlatExpr::And(loc, _, rhs_start, rhs_end) => {
                         let mut rhs = self
                             .expr_stack_mut()
                             .drain(rhs_start..rhs_end)
@@ -139,17 +140,17 @@ pub trait Flatten:
                             self.push_expr(FlatExpr::Not(loc));
                         }
 
-                        self.push_expr(FlatExpr::CmpRequirement(loc, false));
+                        self.push_expr(FlatExpr::CmpRequirement(loc, false, false));
                         self.push_expr(FlatExpr::Or(loc));
                     }
                     _ => {
                         if let Some(inv) = cmp.try_inv_cmp() {
-                            self.push_expr(FlatExpr::CmpRequirement(*loc, false));
+                            self.push_expr(FlatExpr::CmpRequirement(*loc, false, false));
                             self.push_expr(inv)
                         } else {
                             self.push_expr(cmp);
                             self.push_expr(FlatExpr::Not(*loc));
-                            self.push_expr(FlatExpr::Requirement(*loc, false));
+                            self.push_expr(FlatExpr::Requirement(*loc, false, false));
                         }
                     }
                 }
@@ -157,7 +158,7 @@ pub trait Flatten:
                 let false_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
                 self.traverse_expression(if_expr, unchecked);
                 let cmp = self.expr_stack_mut().pop().unwrap();
-                self.traverse_requirement(cmp, if_expr.loc(), false);
+                self.traverse_requirement(cmp, if_expr.loc(), false, false);
                 let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
                 let true_cond_delta = true_cond.len();
                 let false_cond_delta = false_cond.len();
@@ -204,7 +205,7 @@ pub trait Flatten:
                 let start_len = self.expr_stack_mut().len();
                 self.traverse_expression(if_expr, unchecked);
                 let cmp = self.expr_stack_mut().pop().unwrap();
-                self.traverse_requirement(cmp, if_expr.loc(), false);
+                self.traverse_requirement(cmp, if_expr.loc(), false, false);
                 let cond_exprs = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
                 let condition = cond_exprs.len();
 
@@ -235,7 +236,7 @@ pub trait Flatten:
                 let for_cond_exprs = if let Some(cond) = maybe_for_cond {
                     self.traverse_expression(cond, unchecked);
                     let cmp = self.expr_stack_mut().pop().unwrap();
-                    self.traverse_requirement(cmp, cond.loc(), false);
+                    self.traverse_requirement(cmp, cond.loc(), false, false);
                     self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>()
                 } else {
                     vec![]
@@ -329,10 +330,10 @@ pub trait Flatten:
                 self.push_expr(FlatExpr::Return(*loc, maybe_ret_expr.is_some()));
             }
             Revert(loc, maybe_err_path, exprs) => {
-                println!(
-                    "err path? {maybe_err_path:?}, {:#?}",
-                    exprs.iter().map(|i| i.to_string()).collect::<Vec<_>>()
-                );
+                // println!(
+                //     "err path? {maybe_err_path:?}, {:#?}",
+                //     exprs.iter().map(|i| i.to_string()).collect::<Vec<_>>()
+                // );
                 exprs.iter().rev().for_each(|expr| {
                     self.traverse_expression(expr, unchecked);
                 });
@@ -405,37 +406,233 @@ pub trait Flatten:
                 // self.push_expr(FlatExpr::Emit(*loc));
             }
             Try(loc, try_expr, maybe_returns, clauses) => {
-                // if matches!(try_expr, Expression::FunctionCallBlock(..)) {
-                //     assert!(maybe_returns.is_none(),);
-
-                // }
-                // if let Some(returns) = maybe_returns {
-                //     // try_expr will be a normal function call
-                //     self.traverse_expression(try_expr, unchecked);
-                // } else {
-                //     // try_expr may be a function call block
-
-                // }
-                println!("{try_expr:#?},\n{maybe_returns:#?},\n{clauses:#?}");
+                if maybe_returns.is_none() {
+                    self.push_expr(FlatExpr::Todo(
+                        *loc,
+                        "Try-Catch without returns are currently not supported",
+                    ));
+                    return;
+                }
                 self.push_expr(FlatExpr::Try(*loc));
                 self.traverse_expression(try_expr, unchecked);
+                // There can be only one `Simple` catch clause
+                // it will always be checked last after more specific ones
+                // fall through
+                let mut c = clauses.clone();
+                c.sort_by(|a, b| match (a, b) {
+                    (CatchClause::Named(..), CatchClause::Named(..)) => std::cmp::Ordering::Equal,
+                    (CatchClause::Simple(..), CatchClause::Named(..)) => {
+                        std::cmp::Ordering::Greater
+                    }
+                    (CatchClause::Named(..), CatchClause::Simple(..)) => std::cmp::Ordering::Less,
+                    _ => {
+                        self.push_expr(FlatExpr::InvalidSolidity(
+                            *loc,
+                            "Invalid solidity - you cannot have more than 1 catch-all clauses",
+                        ));
+                        std::cmp::Ordering::Equal
+                    }
+                });
+
+                // i.e.: try .. {} catch MyError(..) { block0 } catch MyOtherError(..) { block1 } catch { block2 }
+                // converts into:
+                // if (failed) {
+                //  if type(error) == MyError {
+                //      block0;
+                //  } else if type(error) == MyOtherError{
+                //      block1;
+                //  } else {
+                //      block2;
+                //  }
+                // } else {
+                //   maybe_returns
+                // }
+                #[derive(Default, Debug)]
+                struct IfChain {
+                    pub loc: Loc,
+                    pub true_cond: Vec<FlatExpr>,
+                    pub false_cond: Vec<FlatExpr>,
+                    pub true_body: Vec<FlatExpr>,
+                    pub false_body: Vec<FlatExpr>,
+                }
+
+                impl IfChain {
+                    fn iffer(&self) -> FlatExpr {
+                        FlatExpr::If {
+                            loc: self.loc,
+                            true_cond: self.true_cond.len(),
+                            false_cond: self.false_cond.len(),
+                            true_body: self.true_body.len(),
+                            false_body: self.false_body.len(),
+                        }
+                    }
+
+                    fn flatten(self) -> Vec<FlatExpr> {
+                        let iffer = self.iffer();
+                        let mut flattened = vec![iffer];
+                        flattened.extend(self.true_cond);
+                        flattened.extend(self.false_cond);
+                        flattened.extend(self.true_body);
+                        flattened.extend(self.false_body);
+                        flattened
+                    }
+                    fn join_false_body(&mut self, child_false_body: Self) {
+                        self.false_body.extend(child_false_body.flatten());
+                    }
+                }
+
+                let mut prev_if = None;
+                let mut catch_all = None;
+                for (i, clause) in c.iter().rev().enumerate() {
+                    let mut if_chain = IfChain::default();
+                    match clause {
+                        CatchClause::Named(loc, name, param, block) => {
+                            if_chain.loc = *loc;
+                            // get error type
+                            let true_cond_start = self.expr_stack().len();
+                            let mut true_body_prefix = vec![];
+                            match &*name.name {
+                                "Error" => {
+                                    self.push_expr(FlatExpr::Dup);
+                                    self.push_expr(FlatExpr::TryErrCheck(*loc, "Error"));
+                                    let len = self.expr_stack().len();
+                                    self.push_expr(FlatExpr::MemberAccess(param.loc, "reason"));
+                                    let list = solang_parser::pt::Expression::List(
+                                        param.loc,
+                                        vec![(param.loc, Some(param.clone()))],
+                                    );
+                                    self.traverse_expression(&list, unchecked);
+                                    self.push_expr(FlatExpr::Swap);
+                                    self.push_expr(FlatExpr::Assign(param.loc));
+                                    true_body_prefix =
+                                        self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
+                                }
+                                "Panic" => {
+                                    self.push_expr(FlatExpr::Dup);
+                                    self.push_expr(FlatExpr::TryErrCheck(*loc, "Panic"));
+                                }
+                                _ => {
+                                    self.push_expr(FlatExpr::InvalidSolidity(
+                                        *loc,
+                                        "Only Error(..) or Panic(..) are allowed in catch clauses",
+                                    ));
+                                    break;
+                                }
+                            }
+
+                            let mut true_cond = self
+                                .expr_stack_mut()
+                                .drain(true_cond_start..)
+                                .collect::<Vec<_>>();
+                            let mut false_cond = true_cond.clone();
+                            true_cond.push(FlatExpr::Requirement(*loc, false, false));
+                            false_cond.push(FlatExpr::Not(*loc));
+                            false_cond.push(FlatExpr::Requirement(*loc, false, false));
+                            self.traverse_statement(block, unchecked);
+                            let mut true_body = true_body_prefix;
+                            true_body.extend(
+                                self.expr_stack_mut()
+                                    .drain(true_cond_start..)
+                                    .collect::<Vec<_>>(),
+                            );
+
+                            if_chain.true_cond = true_cond;
+                            if_chain.false_cond = false_cond;
+                            if_chain.true_body = true_body;
+
+                            if let Some(prev) = prev_if {
+                                if_chain.join_false_body(prev);
+                            } else if let Some(catch_all) = catch_all.take() {
+                                if_chain.false_body = catch_all;
+                            } else {
+                                // no more catches, revert
+                                if_chain.false_body = vec![FlatExpr::Revert(*loc, false, 0)];
+                            };
+                            prev_if = Some(if_chain);
+                        }
+                        CatchClause::Simple(loc, maybe_bytes, block) => {
+                            if_chain.loc = *loc;
+                            let catch_all_body = self.expr_stack().len();
+                            self.traverse_statement(block, unchecked);
+                            catch_all = Some(
+                                self.expr_stack_mut()
+                                    .drain(catch_all_body..)
+                                    .collect::<Vec<_>>(),
+                            );
+                        }
+                    }
+                }
+
+                let mut true_body = vec![];
                 if let Some(rets) = maybe_returns {
+                    let true_body_start = self.expr_stack().len();
                     let list = solang_parser::pt::Expression::List(*loc, rets.0.clone());
                     self.traverse_expression(&list, unchecked);
                     self.traverse_statement(&rets.1, unchecked);
+                    true_body = self
+                        .expr_stack_mut()
+                        .drain(true_body_start..)
+                        .collect::<Vec<_>>();
                 }
-                // self.push_expr(FlatExpr::Todo(
-                //     *loc,
-                //     "Try-Catch statements are currently unsupported",
-                // ));
+
+                match (prev_if, catch_all) {
+                    (Some(prev_if), None) => {
+                        let true_cond = vec![
+                            FlatExpr::CallSuccess(*loc),
+                            FlatExpr::Requirement(*loc, false, false),
+                        ];
+                        let false_cond = vec![
+                            FlatExpr::CallSuccess(*loc),
+                            FlatExpr::Not(*loc),
+                            FlatExpr::Requirement(*loc, false, false),
+                        ];
+                        let flattened_catches = prev_if.flatten();
+                        let entry_if = FlatExpr::If {
+                            loc: *loc,
+                            true_cond: 2,
+                            false_cond: 3,
+                            true_body: true_body.len(),
+                            false_body: flattened_catches.len(),
+                        };
+                        self.push_expr(entry_if);
+                        self.expr_stack_mut().extend(true_cond);
+                        self.expr_stack_mut().extend(false_cond);
+                        self.expr_stack_mut().extend(true_body);
+                        self.expr_stack_mut().extend(flattened_catches);
+                    }
+                    (None, Some(catch_all)) => {
+                        let true_cond = vec![
+                            FlatExpr::CallSuccess(*loc),
+                            FlatExpr::Requirement(*loc, false, false),
+                        ];
+                        let false_cond = vec![
+                            FlatExpr::CallSuccess(*loc),
+                            FlatExpr::Not(*loc),
+                            FlatExpr::Requirement(*loc, false, false),
+                        ];
+                        let entry_if = FlatExpr::If {
+                            loc: *loc,
+                            true_cond: 2,
+                            false_cond: 3,
+                            true_body: true_body.len(),
+                            false_body: catch_all.len(),
+                        };
+                        self.push_expr(entry_if);
+                        self.expr_stack_mut().extend(true_cond);
+                        self.expr_stack_mut().extend(false_cond);
+                        self.expr_stack_mut().extend(true_body);
+                        self.expr_stack_mut().extend(catch_all);
+                    }
+                    _ => self.push_expr(FlatExpr::InvalidSolidity(*loc, "Misconfigured try-catch")),
+                }
             }
             Error(_loc) => {}
         }
     }
 
-    fn traverse_requirement(&mut self, cmp: FlatExpr, loc: Loc, with_str: bool) {
+    fn traverse_requirement(&mut self, cmp: FlatExpr, loc: Loc, with_str: bool, assertion: bool) {
         match cmp {
-            FlatExpr::And(_, rhs_start, rhs_end) => {
+            FlatExpr::And(_, lhs_start, rhs_start, rhs_end) => {
                 // Its better to just break up And into its component
                 // parts now as opposed to trying to do it later
                 // i.e.:
@@ -448,16 +645,25 @@ pub trait Flatten:
                     .drain(rhs_start..rhs_end)
                     .collect::<Vec<_>>();
                 let rhs_cmp = rhs.pop().unwrap();
-                let lhs_cmp = self.expr_stack_mut().pop().unwrap();
+                let mut lhs = self
+                    .expr_stack_mut()
+                    .drain(lhs_start..rhs_start)
+                    .collect::<Vec<_>>();
+                let lhs_cmp = lhs.pop().unwrap();
+
+                if with_str {
+                    self.push_expr(FlatExpr::Dup);
+                }
+                self.expr_stack_mut().extend(lhs);
                 // We have to reset the stack to before the edits because
                 // `And`s use absolute positioning, so if we change out the stack it gets a bit screwed up.
                 // So we edit the rhs cmp, then replace it with the original
                 let len = self.expr_stack().len();
-                self.traverse_requirement(lhs_cmp, loc, with_str);
+                self.traverse_requirement(lhs_cmp, loc, with_str, assertion);
                 let new_lhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
                 let len = self.expr_stack().len();
                 self.expr_stack_mut().extend(rhs);
-                self.traverse_requirement(rhs_cmp, loc, with_str);
+                self.traverse_requirement(rhs_cmp, loc, with_str, assertion);
                 let new_rhs = self.expr_stack_mut().drain(len..).collect::<Vec<_>>();
                 self.expr_stack_mut().extend(new_lhs);
                 self.expr_stack_mut().extend(new_rhs);
@@ -469,12 +675,12 @@ pub trait Flatten:
             | FlatExpr::Equal(_)
             | FlatExpr::NotEqual(_)
             | FlatExpr::Or(_) => {
-                self.push_expr(FlatExpr::CmpRequirement(loc, with_str));
+                self.push_expr(FlatExpr::CmpRequirement(loc, with_str, assertion));
                 self.push_expr(cmp);
             }
             _ => {
                 self.push_expr(cmp);
-                self.push_expr(FlatExpr::Requirement(loc, with_str));
+                self.push_expr(FlatExpr::Requirement(loc, with_str, assertion));
             }
         }
     }
@@ -626,7 +832,7 @@ pub trait Flatten:
         self.traverse_yul_expression(&iec.if_expr);
 
         // have it be a require statement
-        self.push_expr(FlatExpr::CmpRequirement(loc, false));
+        self.push_expr(FlatExpr::CmpRequirement(loc, false, false));
         self.push_expr(FlatExpr::More(loc));
 
         let true_cond = self.expr_stack_mut().drain(start_len..).collect::<Vec<_>>();
@@ -812,8 +1018,8 @@ pub trait Flatten:
             }
 
             Assign(_, lhs, rhs) => {
-                self.traverse_expression(lhs, unchecked);
                 self.traverse_expression(rhs, unchecked);
+                self.traverse_expression(lhs, unchecked);
                 self.push_expr(FlatExpr::try_from(parent_expr).unwrap());
             }
 
@@ -842,11 +1048,12 @@ pub trait Flatten:
             }
 
             And(loc, lhs, rhs) => {
+                let lhs_start = self.expr_stack().len();
                 self.traverse_expression(lhs, unchecked);
                 let rhs_start = self.expr_stack().len();
                 self.traverse_expression(rhs, unchecked);
                 let rhs_end = self.expr_stack().len();
-                self.push_expr(FlatExpr::And(*loc, rhs_start, rhs_end));
+                self.push_expr(FlatExpr::And(*loc, lhs_start, rhs_start, rhs_end));
             }
 
             List(_, params) => {
@@ -1025,14 +1232,13 @@ pub trait Flatten:
             }
             FunctionCall(loc, func_expr, input_exprs) => match &**func_expr {
                 Variable(Identifier { name, .. }) if matches!(&**name, "require" | "assert") => {
-                    // require(inputs) | assert(inputs)
-
                     input_exprs.iter().enumerate().rev().for_each(|(_, expr)| {
                         self.traverse_expression(expr, unchecked);
                     });
                     let cmp = self.expr_stack_mut().pop().unwrap();
                     let with_str = input_exprs.len() > 1;
-                    self.traverse_requirement(cmp, *loc, with_str);
+                    let assertion = matches!(&**name, "assert");
+                    self.traverse_requirement(cmp, *loc, with_str, assertion);
                 }
                 _ => {
                     // func(inputs)
@@ -1191,6 +1397,61 @@ pub trait Flatten:
             }
             self.add_if_err(res);
         }
+
+        if ctx.parse_idx(self) >= stack.len() {
+            let ended = self.end(arena, &mut stack, ctx);
+            self.add_if_err(ended);
+        }
+    }
+
+    fn end(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        stack: &mut Vec<FlatExpr>,
+        ctx: ContextNode,
+    ) -> Result<(), ExprErr> {
+        let mut loc = None;
+        let mut stack_rev_iter = stack.iter().rev();
+        let mut loccer = stack_rev_iter.next();
+        while loc.is_none() && loccer.is_some() {
+            loc = loccer.unwrap().try_loc();
+            loccer = stack_rev_iter.next();
+        }
+        let loc = loc.unwrap_or(ctx.underlying(self).unwrap().loc);
+        let fun = ctx.associated_fn(self).into_expr_err(loc)?;
+        let vars = if ctx.return_nodes(self).unwrap().is_empty() {
+            ExprRet::Multi(
+                fun.returns(arena, self)
+                    .iter()
+                    .map(|ret| {
+                        if let Some(name) = ret.maybe_name(self).ok()? {
+                            ctx.return_var_by_name_or_recurse(self, &name)
+                                .ok()
+                                .flatten()
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|i| {
+                        if let Some(var) = i {
+                            ExprRet::Single(var.0.into())
+                        } else {
+                            ExprRet::Null
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            ExprRet::Multi(vec![])
+        };
+
+        if vars.nonnull_len() != 0 {
+            self.return_match(arena, ctx, loc, vars, 0);
+        } else {
+            self.return_match(arena, ctx, loc, ExprRet::CtxKilled(KilledKind::Ended), 0);
+        }
+
+        Ok(())
     }
 
     fn interpret_step(
@@ -1247,16 +1508,7 @@ pub trait Flatten:
             parse_idx
         );
         let Some(next) = stack.get(parse_idx) else {
-            let mut loc = None;
-            let mut stack_rev_iter = stack.iter().rev();
-            let mut loccer = stack_rev_iter.next();
-            while loc.is_none() && loccer.is_some() {
-                loc = loccer.unwrap().try_loc();
-                loccer = stack_rev_iter.next();
-            }
-            let loc = loc.unwrap_or(Loc::Implicit);
-            self.return_match(arena, ctx, loc, ExprRet::CtxKilled(KilledKind::Ended), 0);
-            return Ok(());
+            return self.end(arena, stack, ctx);
         };
         let next = *next;
 
@@ -1268,7 +1520,10 @@ pub trait Flatten:
         );
 
         if self.debug_stack() {
-            tracing::trace!("return stack: {}", ctx.debug_expr_stack_str(self).unwrap());
+            tracing::trace!(
+                "return stack: {}",
+                ctx.debug_expr_stack_str_ranged(self, arena).unwrap()
+            );
         }
 
         match next {
@@ -1307,6 +1562,48 @@ pub trait Flatten:
                 ctx.set_expr_flag(self, ExprFlag::Try);
                 Ok(())
             }
+            TryErrCheck(loc, name) => {
+                let mut res = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                let res = res.remove(0).expect_single().into_expr_err(loc)?;
+                if let Some(err_node) = ContextVarNode::from(res)
+                    .maybe_err_node(self)
+                    .into_expr_err(loc)?
+                {
+                    let errors_match = err_node.name(self).into_expr_err(loc)? == name;
+                    let errors_match_var =
+                        self.add_concrete_var(ctx, Concrete::from(errors_match), loc)?;
+                    ctx.push_expr(ExprRet::Single(errors_match_var.0.into()), self)
+                        .into_expr_err(loc)
+                } else {
+                    let errors_match_var =
+                        self.add_concrete_var(ctx, Concrete::from(false), loc)?;
+                    ctx.push_expr(ExprRet::Single(errors_match_var.0.into()), self)
+                        .into_expr_err(loc)
+                }
+            }
+            CallSuccess(loc) => {
+                let mut res = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                let res = res.remove(0);
+                ctx.push_expr(res.clone(), self).into_expr_err(loc)?;
+                let call_res = res.flatten();
+                match call_res {
+                    ExprRet::Single(i) => {
+                        let is_err = ContextVarNode::from(i).is_err(self).into_expr_err(loc)?;
+                        let success_var =
+                            self.add_concrete_var(ctx, Concrete::from(!is_err), loc)?;
+                        ctx.push_expr(ExprRet::Single(success_var.0.into()), self)
+                            .into_expr_err(loc)?;
+                    }
+                    _ => {
+                        let success_var = self.add_concrete_var(ctx, Concrete::from(true), loc)?;
+                        ctx.push_expr(ExprRet::Single(success_var.0.into()), self)
+                            .into_expr_err(loc)?;
+                    }
+                }
+                Ok(())
+            }
+
+            InvalidSolidity(loc, s) => Err(ExprErr::ParseError(loc, s.to_string())),
 
             // Literals
             AddressLiteral(loc, lit) => self.address_literal(ctx, loc, lit),
@@ -1328,23 +1625,26 @@ pub trait Flatten:
 
             // Conditional
             If { .. } => self.interp_if(arena, ctx, stack, next),
-            CmpRequirement(_loc, with_str) => {
+            CmpRequirement(_loc, with_str, assertion) => {
                 let try_catch = matches!(ctx.peek_expr_flag(self), Some(ExprFlag::Try));
-                ctx.set_expr_flag(self, ExprFlag::Requirement(try_catch, with_str));
+                ctx.set_expr_flag(self, ExprFlag::Requirement(try_catch, with_str, assertion));
                 Ok(())
             }
-            Requirement(loc, with_str) => {
+            Requirement(loc, with_str, assertion) => {
                 let _ = ctx.take_expr_flag(self);
                 let pop_num = 1 + if with_str { 1 } else { 0 };
                 let mut lhs = ctx
                     .pop_n_latest_exprs(pop_num, loc, self)
                     .into_expr_err(loc)?;
                 let req = lhs.swap_remove(0);
+
                 let err = if with_str {
                     let err = lhs.swap_remove(0);
                     let err_str_cvar =
                         ContextVarNode::from(err.expect_single().into_expr_err(loc)?);
                     Some(ErrType::RevertString(err_str_cvar))
+                } else if assertion {
+                    Some(ErrType::assertion())
                 } else {
                     None
                 };
@@ -1449,6 +1749,24 @@ pub trait Flatten:
                 //     .into_expr_err(Loc::Implicit)?;
                 Ok(())
             }
+            Dup => {
+                let mut res = ctx
+                    .pop_n_latest_exprs(1, Loc::Implicit, self)
+                    .into_expr_err(Loc::Implicit)?;
+                let to_dup = res.remove(0);
+                let duped = to_dup.clone();
+                ctx.push_expr(to_dup, self);
+                ctx.push_expr(duped, self);
+                Ok(())
+            }
+            Swap => {
+                let mut res = ctx
+                    .pop_n_latest_exprs(2, Loc::Implicit, self)
+                    .into_expr_err(Loc::Implicit)?;
+                ctx.push_expr(res.remove(0), self).unwrap();
+                ctx.push_expr(res.remove(0), self).unwrap();
+                Ok(())
+            }
             Emit(loc) => {
                 let _ = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
                 Ok(())
@@ -1515,7 +1833,9 @@ pub trait Flatten:
         match to_delete {
             ExprRet::CtxKilled(kind) => ctx.kill(self, loc, kind).into_expr_err(loc),
             ExprRet::Single(cvar) | ExprRet::SingleLiteral(cvar) => {
-                let mut new_var = self.advance_var_in_ctx(cvar.into(), loc, ctx).unwrap();
+                let mut new_var = self
+                    .advance_var_in_ctx(arena, cvar.into(), loc, ctx)
+                    .unwrap();
                 new_var.sol_delete_range(self).into_expr_err(loc)
             }
             ExprRet::Multi(inner) => inner
@@ -1941,7 +2261,7 @@ pub trait Flatten:
         };
 
         let (true_subctx, false_subctx) =
-            Context::add_fork_subctxs(self, ctx, loc).into_expr_err(loc)?;
+            Context::add_fork_subctxs(self, ctx, loc, false).into_expr_err(loc)?;
 
         // Parse the true condition expressions then skip the
         // false condition expressions, thus resulting in the
@@ -1968,10 +2288,12 @@ pub trait Flatten:
 
         match (true_killed, false_killed) {
             (true, true) => {
+                // println!("BOTH KILLED");
                 // both have been killed, delete the child and dont process the bodies
                 ctx.delete_child(self).into_expr_err(loc)?;
             }
             (true, false) => {
+                // println!("TRUE KILLED");
                 // the true context has been killed, delete child, process the false fork expression
                 // in the parent context and parse the false body
                 ctx.delete_child(self).into_expr_err(loc)?;
@@ -2002,6 +2324,35 @@ pub trait Flatten:
                 })?;
             }
             (false, false) => {
+                let ctx_fork = self.add_node(Node::ContextFork);
+                self.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::ContextFork));
+                self.add_edge(
+                    NodeIdx::from(true_subctx.0),
+                    ctx_fork,
+                    Edge::Context(ContextEdge::Subcontext),
+                );
+                self.add_edge(
+                    NodeIdx::from(false_subctx.0),
+                    ctx_fork,
+                    Edge::Context(ContextEdge::Subcontext),
+                );
+
+                if let Some(cont) = true_subctx.underlying(self).unwrap().continuation_of() {
+                    self.add_edge(
+                        true_subctx,
+                        cont,
+                        Edge::Context(ContextEdge::Continue("TODO")),
+                    );
+                }
+
+                if let Some(cont) = false_subctx.underlying(self).unwrap().continuation_of() {
+                    self.add_edge(
+                        false_subctx,
+                        cont,
+                        Edge::Context(ContextEdge::Continue("TODO")),
+                    );
+                }
+
                 // both branches are reachable. process each body
                 for _ in 0..true_body {
                     self.interpret_step(arena, true_subctx, loc, stack)?;
@@ -2036,12 +2387,16 @@ pub trait Flatten:
         let res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
         let [lhs, rhs] = into_sized::<ExprRet, 2>(res);
 
-        if let Some(ExprFlag::Requirement(try_catch, with_str)) = ctx.peek_expr_flag(self) {
+        if let Some(ExprFlag::Requirement(try_catch, with_str, assertion)) =
+            ctx.peek_expr_flag(self)
+        {
             let err = if with_str {
                 let res = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
                 let [err] = into_sized::<ExprRet, 1>(res);
                 let err_str_cvar = ContextVarNode::from(err.expect_single().into_expr_err(loc)?);
                 Some(ErrType::RevertString(err_str_cvar))
+            } else if assertion {
+                Some(ErrType::assertion())
             } else {
                 None
             };
@@ -2102,6 +2457,7 @@ pub trait Flatten:
                             deps.extend(rhs.dependent_on(self, true).into_expr_err(loc)?);
                             Some(deps)
                         },
+                        is_fundamental: None,
                         ty: VarType::BuiltIn(
                             self.builtin_or_add(Builtin::Bool).into(),
                             Some(range),
@@ -2370,7 +2726,7 @@ pub trait Flatten:
         };
 
         let res = ctx.pop_n_latest_exprs(2, loc, self).into_expr_err(loc)?;
-        let [rhs, lhs] = into_sized(res);
+        let [lhs, rhs] = into_sized(res);
         self.match_assign_sides(arena, ctx, loc, &lhs, &rhs)
     }
 
@@ -2573,15 +2929,15 @@ pub trait Flatten:
             _ => {}
         };
 
-        println!("TRY CATCH: {try_catch}");
+        // println!("TRY CATCH: {try_catch}");
 
         let mut func_and_inputs = ctx
             .pop_n_latest_exprs(n + 1 + call_block_inputs, loc, self)
             .into_expr_err(loc)?;
 
         let mut inputs = func_and_inputs.split_off(1);
-        let [func] = into_sized(func_and_inputs);
-        let func = func.expect_single().into_expr_err(loc)?;
+        let [func_ret] = into_sized(func_and_inputs);
+        let func = func_ret.expect_single().into_expr_err(loc)?;
         let call_args = inputs.split_off(n);
 
         let env = if !call_args.is_empty() {
@@ -2675,7 +3031,7 @@ pub trait Flatten:
         let inputs = ExprRet::Multi(inputs);
 
         if self.debug_stack() {
-            tracing::trace!("inputs: {}", inputs.debug_str(self));
+            tracing::trace!("inputs: {}", inputs.debug_str_ranged(self, arena));
         }
 
         if is_new_call {

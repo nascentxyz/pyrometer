@@ -87,6 +87,7 @@ impl VarNode {
                     tmp_of: None,
                     is_symbolic: true,
                     is_return: false,
+                    is_fundamental: None,
                     ty: initer,
                 };
                 let cvar = analyzer.add_node(var);
@@ -202,6 +203,7 @@ impl VarNode {
                     tmp_of: None,
                     is_symbolic: true,
                     is_return: false,
+                    is_fundamental: None,
                     ty,
                 }));
             }

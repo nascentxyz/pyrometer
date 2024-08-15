@@ -35,6 +35,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         tmp_of: None,
                         dep_on: None,
                         is_return: false,
+                        is_fundamental: None,
                         ty,
                     };
                     let input_node = self.add_node(var);
@@ -61,6 +62,7 @@ pub trait List: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                                 tmp_of: None,
                                 dep_on: None,
                                 is_return: false,
+                                is_fundamental: None,
                                 ty,
                             };
                             let input_node = self.add_node(new_lhs_underlying);

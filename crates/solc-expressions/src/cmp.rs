@@ -61,6 +61,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     dep_on: Some(lhs_cvar.dependent_on(self, true).into_expr_err(loc)?),
                     is_symbolic: lhs_cvar.is_symbolic(self).into_expr_err(loc)?,
                     is_return: false,
+                    is_fundamental: None,
                     ty,
                 };
                 let cvar = ContextVarNode::from(self.add_node(out_var));
@@ -182,6 +183,7 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         deps.extend(rhs_cvar.dependent_on(self, true).into_expr_err(loc)?);
                         Some(deps)
                     },
+                    is_fundamental: None,
                     ty: VarType::BuiltIn(
                         BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                         Some(range),

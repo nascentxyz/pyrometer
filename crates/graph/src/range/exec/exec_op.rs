@@ -15,6 +15,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, Self::GraphError> {
+        println!("exec: {self}");
         let idx = self.arena_idx(arena);
         if let Some(idx) = idx {
             if let Some(Elem::Expr(expr)) = arena.ranges.get(idx) {
@@ -29,7 +30,14 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             }
         }
 
-        let res = self.exec(self.spread(analyzer, arena)?, maximize, analyzer, arena)?;
+        let (lhs_min, lhs_max, rhs_min, rhs_max) = self.spread(analyzer, arena)?;
+        println!("spread: {lhs_min}, {lhs_max}, {rhs_min}, {rhs_max}");
+        let res = self.exec(
+            (lhs_min, lhs_max, rhs_min, rhs_max),
+            maximize,
+            analyzer,
+            arena,
+        )?;
 
         if let Some(idx) = idx {
             if let Some(Elem::Expr(expr)) = arena.ranges.get_mut(idx) {
