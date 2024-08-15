@@ -122,6 +122,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
 
         let new_lhs = if needs_forcible {
             self.advance_var_in_ctx_forcible(
+                arena,
                 lhs_cvar.latest_version_or_inherited_in_ctx(ctx, self),
                 loc,
                 ctx,
@@ -177,10 +178,12 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         // we use try_set_* because some types like functions dont have a range.
         let _ = new_lhs.try_set_range_min(self, arena, new_lower_bound);
         let _ = new_lhs.try_set_range_max(self, arena, new_upper_bound);
-        self.maybe_assign_to_parent_array(arena, loc, lhs_cvar, rhs_cvar, ctx)?;
+        self.maybe_assign_to_parent_array(arena, ctx, lhs_cvar, rhs_cvar, loc)?;
+        self.maybe_assign_array_to_array(arena, ctx, new_lhs, rhs_cvar, loc)?;
 
         if let Some(rhs_range) = rhs_cvar.ref_range(self).into_expr_err(loc)? {
             let res = new_lhs
+                .latest_version_or_inherited_in_ctx(ctx, self)
                 .try_set_range_exclusions(self, rhs_range.exclusions.clone())
                 .into_expr_err(loc);
             let _ = self.add_if_err(res);
@@ -188,6 +191,7 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
 
         // advance the rhs variable to avoid recursion issues
         self.advance_var_in_ctx_forcible(
+            arena,
             rhs_cvar.latest_version_or_inherited_in_ctx(ctx, self),
             loc,
             ctx,
@@ -199,15 +203,15 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
     fn maybe_assign_to_parent_array(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
+        ctx: ContextNode,
         maybe_arr_attr: ContextVarNode,
         rhs: ContextVarNode,
-        ctx: ContextNode,
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         if let Some(index) = maybe_arr_attr.index_access_to_index(self) {
             let array = maybe_arr_attr.index_access_to_array(self).unwrap();
             let latest_arr = array.latest_version_or_inherited_in_ctx(ctx, self);
-            let new_arr = self.advance_var_in_ctx_forcible(latest_arr, loc, ctx, true)?;
+            let new_arr = self.advance_var_in_ctx_forcible(arena, latest_arr, loc, ctx, true)?;
             let new_elem = Elem::from(latest_arr).set_indices(RangeDyn::new_for_indices(
                 vec![(Elem::from(index), Elem::from(rhs))],
                 loc,
@@ -219,12 +223,12 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 .set_range_max(self, arena, new_elem)
                 .into_expr_err(loc)?;
 
-            self.maybe_assign_to_parent_array(arena, loc, latest_arr, new_arr, ctx)?;
+            self.maybe_assign_to_parent_array(arena, ctx, latest_arr, new_arr, loc)?;
         }
 
         if let Some(array) = maybe_arr_attr.len_var_to_array(self) {
             let latest_arr = array.latest_version_or_inherited_in_ctx(ctx, self);
-            let new_arr = self.advance_var_in_ctx_forcible(latest_arr, loc, ctx, true)?;
+            let new_arr = self.advance_var_in_ctx_forcible(arena, latest_arr, loc, ctx, true)?;
             let new_elem = Elem::from(latest_arr).set_length(Elem::from(rhs));
             new_arr
                 .set_range_min(self, arena, new_elem.clone())
@@ -233,7 +237,24 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
                 .set_range_max(self, arena, new_elem)
                 .into_expr_err(loc)?;
 
-            self.maybe_assign_to_parent_array(arena, loc, latest_arr, new_arr, ctx)?;
+            self.maybe_assign_to_parent_array(arena, ctx, latest_arr, new_arr, loc)?;
+        }
+
+        Ok(())
+    }
+
+    fn maybe_assign_array_to_array(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        lhs_cvar: ContextVarNode,
+        rhs_cvar: ContextVarNode,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        if let Some(rhs_len_var) = rhs_cvar.array_to_len_var(self) {
+            if let Some(lhs_len_var) = lhs_cvar.array_to_len_var(self) {
+                self.assign(arena, loc, lhs_len_var, rhs_len_var, ctx)?;
+            }
         }
 
         Ok(())

@@ -1,7 +1,7 @@
 use crate::LibraryAccess;
 
 use graph::{
-    nodes::{ContextNode, ContextVar, ContextVarNode, ErrorNode, ExprRet, Fielded},
+    nodes::{ContextVar, ContextVarNode, ErrorNode, ExprRet, Fielded},
     AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, IntoExprErr};
@@ -19,7 +19,6 @@ pub trait ErrorAccess:
     /// Perform member access on a error
     fn error_var_member_access(
         &mut self,
-        ctx: ContextNode,
         cvar: ContextVarNode,
         err_node: ErrorNode,
         field_name: &str,

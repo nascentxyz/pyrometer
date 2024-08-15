@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT or APACHE2
+pragma solidity ^0.8.0;
+
 contract Variable {
     aUserType a_user_type;
 
@@ -7,13 +10,13 @@ contract Variable {
 
     function a_user_type_memory(
         aUserType memory a_user_type
-    ) public returns (uint) {
+    ) public pure returns (uint) {
         return a_user_type.aUserType;
     }
 
     function a_user_type_calldata(
         aUserType calldata a_user_type
-    ) public returns (uint) {
+    ) public pure returns (uint) {
         return a_user_type.aUserType;
     }
 

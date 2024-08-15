@@ -343,7 +343,6 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         use Elem::*;
-        println!("elem: {self}");
         let res = match self {
             Reference(dy) => dy.minimize(analyzer, arena)?,
             Concrete(inner) => inner.minimize(analyzer, arena)?,
@@ -463,7 +462,6 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         use Elem::*;
-        println!("simplify minimize: {self}");
 
         if let Some(idx) = arena.idx(self) {
             if let Some(t) = arena.ranges.get(idx) {
@@ -475,7 +473,6 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                     }
                     c @ Concrete(_) => return Ok(c.clone()),
                     ConcreteDyn(inner) => {
-                        println!("cached: {t}, self: {self}");
                         if let Some(min) = &inner.flattened_min {
                             return Ok(*min.clone());
                         }

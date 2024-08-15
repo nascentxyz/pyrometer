@@ -599,7 +599,6 @@ impl RangeElem<Concrete> for RangeDyn<Concrete> {
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
-        println!("simplify minimize dyn: {self:?}");
         if let Some(min) = &self.flattened_min {
             return Ok(*min.clone());
         }

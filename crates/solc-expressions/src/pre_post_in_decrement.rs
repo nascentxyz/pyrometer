@@ -1,4 +1,4 @@
-use crate::{variable::Variable, BinOp};
+use crate::BinOp;
 
 use graph::{
     elem::*,

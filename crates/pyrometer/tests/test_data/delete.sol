@@ -130,6 +130,43 @@ contract ComplexDelete {
     function clearAllEducationHistory(uint256 userId) public {
         delete users[userId].educationHistory;
     }
+
+    function deleteUserAddress(uint256 userId, uint256 addressIndex) public {
+        require(
+            addressIndex < users[userId].addresses.length,
+            "Address index out of bounds"
+        );
+        users[userId].addresses[addressIndex] = users[userId].addresses[
+            users[userId].addresses.length - 1
+        ];
+        users[userId].addresses.pop();
+    }
+
+    function deleteEmploymentHistory(
+        uint256 userId,
+        uint256 employmentIndex
+    ) public {
+        require(
+            employmentIndex < users[userId].employmentHistory.length,
+            "Employment index out of bounds"
+        );
+        users[userId].employmentHistory[employmentIndex] = users[userId]
+            .employmentHistory[users[userId].employmentHistory.length - 1];
+        users[userId].employmentHistory.pop();
+    }
+
+    function deleteEducationHistory(
+        uint256 userId,
+        uint256 educationIndex
+    ) public {
+        require(
+            educationIndex < users[userId].educationHistory.length,
+            "Education index out of bounds"
+        );
+        users[userId].educationHistory[educationIndex] = users[userId]
+            .educationHistory[users[userId].educationHistory.length - 1];
+        users[userId].educationHistory.pop();
+    }
 }
 
 contract UseComplexDelete {
@@ -177,13 +214,13 @@ contract UseComplexDelete {
         // Test deletions and updates
 
         // Delete an address
-        // t.deleteUserAddress(1, 0); // TODO @brock these need uncommented when the pop is fixed and these functions are back
+        t.deleteUserAddress(1, 0); // TODO @brock these need uncommented when the pop is fixed and these functions are back
 
         // Delete employment history
-        // t.deleteEmploymentHistory(1, 0); // TODO @brock these need uncommented when the pop is fixed and these functions are back
+        t.deleteEmploymentHistory(1, 0); // TODO @brock these need uncommented when the pop is fixed and these functions are back
 
         // Delete education history
-        // t.deleteEducationHistory(2, 0); // TODO @brock these need uncommented when the pop is fixed and these functions are back
+        t.deleteEducationHistory(2, 0); // TODO @brock these need uncommented when the pop is fixed and these functions are back
 
         // Delete user preference
         t.deleteUserPreference(1, "darkMode");

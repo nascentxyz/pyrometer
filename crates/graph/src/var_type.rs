@@ -33,6 +33,14 @@ impl AsDotStr for VarType {
 }
 
 impl VarType {
+    pub fn rangeless_clone(&self) -> Self {
+        match self {
+            VarType::User(t, _) => VarType::User(*t, None),
+            VarType::BuiltIn(t, _) => VarType::BuiltIn(*t, None),
+            VarType::Concrete(t) => VarType::Concrete(*t),
+        }
+    }
+
     pub fn set_range(&mut self, new_range: SolcRange) -> Result<(), GraphError> {
         match self {
             VarType::User(TypeNode::Enum(_), ref mut r)
@@ -91,6 +99,20 @@ impl VarType {
     pub fn is_dyn_builtin(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.is_dyn(analyzer),
+            _ => Ok(false),
+        }
+    }
+
+    pub fn is_string(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => node.is_string(analyzer),
+            _ => Ok(false),
+        }
+    }
+
+    pub fn is_bytes(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => node.is_bytes(analyzer),
             _ => Ok(false),
         }
     }

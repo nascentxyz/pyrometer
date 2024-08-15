@@ -1,14 +1,14 @@
 use crate::{
     elem::Elem,
     nodes::{
-        Builtin, Concrete, ContextNode, ContextVarNode, EnumNode, ErrorNode, Fielded, StructNode,
-        TyNode,
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, EnumNode,
+        ErrorNode, Fielded, StructNode, TyNode,
     },
     range::{
         elem::{RangeElem, RangeExpr, RangeOp},
         RangeEval,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode, VarType,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, SolcRange, TypeNode, VarType,
 };
 
 use shared::{GraphError, RangeArena, Search, StorageLocation};
@@ -113,6 +113,52 @@ impl ContextVarNode {
             strukt.add_fields_to_cvar(analyzer, *self, loc)
         } else if let Some(err) = self.maybe_err_node(analyzer)? {
             err.add_fields_to_cvar(analyzer, *self, loc)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn maybe_add_len_inplace(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        ctx: ContextNode,
+        loc: Loc,
+    ) -> Result<(), GraphError> {
+        if self.needs_length(analyzer)? {
+            let name = format!("{}.length", self.name(analyzer)?);
+            let len_min = Elem::from(Concrete::from(U256::ZERO));
+            let len_max = Elem::from(Concrete::from(U256::MAX));
+            let range = SolcRange::new(len_min, len_max, vec![]);
+            let len_var = ContextVar {
+                loc: Some(loc),
+                name,
+                display_name: self.display_name(analyzer)? + ".length",
+                storage: None,
+                is_tmp: false,
+                tmp_of: None,
+                dep_on: None,
+                is_symbolic: true,
+                is_return: false,
+                is_fundamental: None,
+                ty: VarType::BuiltIn(
+                    BuiltInNode::from(analyzer.builtin_or_add(Builtin::Uint(256))),
+                    Some(range),
+                ),
+            };
+            let len_node = ContextVarNode::from(analyzer.add_node(len_var));
+            analyzer.add_edge(
+                len_node,
+                *self,
+                Edge::Context(ContextEdge::AttrAccess("length")),
+            );
+            analyzer.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
+            let underlying_mut = self.underlying_mut(analyzer).unwrap();
+            if let Some(mut range) = underlying_mut.ty.take_range() {
+                range.min = range.min.set_length(len_node.into());
+                range.max = range.max.set_length(len_node.into());
+                underlying_mut.ty.set_range(range).unwrap();
+            }
+            ctx.add_var(len_node, analyzer)
         } else {
             Ok(())
         }

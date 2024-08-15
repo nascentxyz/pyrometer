@@ -6,7 +6,7 @@ use crate::{
 
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode, Fielded, KilledKind},
+    nodes::{Concrete, ContextNode, KilledKind},
     AnalyzerBackend, GraphBackend,
 };
 use shared::{RangeArena, Search};

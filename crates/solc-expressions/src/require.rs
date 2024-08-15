@@ -11,7 +11,6 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use alloy_primitives::I256;
 use solang_parser::pt::Loc;
 
 use std::cmp::Ordering;

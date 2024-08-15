@@ -454,7 +454,7 @@ impl ContextNode {
             return Ok(true);
         }
 
-        return Ok(false);
+        Ok(false)
     }
 
     /// Gets the associated function for the context

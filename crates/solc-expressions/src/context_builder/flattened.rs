@@ -26,8 +26,7 @@ use shared::{
 
 use alloy_primitives::U256;
 use solang_parser::pt::{
-    CatchClause, CodeLocation, Expression, Identifier, Loc, Statement, VariableDeclaration,
-    YulExpression, YulStatement,
+    CatchClause, CodeLocation, Expression, Identifier, Loc, Statement, YulExpression, YulStatement,
 };
 
 use std::collections::BTreeMap;
@@ -483,7 +482,7 @@ pub trait Flatten:
 
                 let mut prev_if = None;
                 let mut catch_all = None;
-                for (i, clause) in c.iter().rev().enumerate() {
+                for clause in c.iter().rev() {
                     let mut if_chain = IfChain::default();
                     match clause {
                         CatchClause::Named(loc, name, param, block) => {
@@ -1355,7 +1354,7 @@ pub trait Flatten:
         let ctx = ContextNode::from(self.add_node(Node::Context(raw_ctx)));
         self.add_edge(ctx, func, Edge::Context(ContextEdge::Context));
 
-        let res = func.add_params_to_ctx(ctx, self).into_expr_err(loc);
+        let res = func.add_params_to_ctx(self, ctx).into_expr_err(loc);
         self.add_if_err(res);
 
         let msg = self.msg().underlying(self).unwrap().clone();
@@ -1621,7 +1620,7 @@ pub trait Flatten:
             Assign(..) => self.interp_assign(arena, ctx, next),
             List(_, _) => self.interp_list(ctx, stack, next, parse_idx),
             This(_) => self.interp_this(ctx, next),
-            Delete(_) => self.interp_delete(ctx, next),
+            Delete(_) => self.interp_delete(arena, ctx, next),
 
             // Conditional
             If { .. } => self.interp_if(arena, ctx, stack, next),
@@ -1755,8 +1754,8 @@ pub trait Flatten:
                     .into_expr_err(Loc::Implicit)?;
                 let to_dup = res.remove(0);
                 let duped = to_dup.clone();
-                ctx.push_expr(to_dup, self);
-                ctx.push_expr(duped, self);
+                ctx.push_expr(to_dup, self).unwrap();
+                ctx.push_expr(duped, self).unwrap();
                 Ok(())
             }
             Swap => {
@@ -1811,7 +1810,12 @@ pub trait Flatten:
         Ok(())
     }
 
-    fn interp_delete(&mut self, ctx: ContextNode, next: FlatExpr) -> Result<(), ExprErr> {
+    fn interp_delete(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        next: FlatExpr,
+    ) -> Result<(), ExprErr> {
         let FlatExpr::Delete(loc) = next else {
             unreachable!()
         };
@@ -1821,11 +1825,12 @@ pub trait Flatten:
             .into_expr_err(loc)?
             .swap_remove(0);
 
-        self.delete_match(ctx, to_delete, loc)
+        self.delete_match(arena, ctx, to_delete, loc)
     }
 
     fn delete_match(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         to_delete: ExprRet,
         loc: Loc,
@@ -1840,7 +1845,7 @@ pub trait Flatten:
             }
             ExprRet::Multi(inner) => inner
                 .into_iter()
-                .try_for_each(|i| self.delete_match(ctx, i, loc)),
+                .try_for_each(|i| self.delete_match(arena, ctx, i, loc)),
             ExprRet::Null => Ok(()),
         }
     }

@@ -23,7 +23,7 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
     ) -> Option<()> {
         match test_command {
             TestCommand::Variable(var_name, VariableCommand::RangeAssert { min, max }) => {
-                if let Some(var) = ctx.var_by_name(self, &var_name) {
+                if let Some(var) = ctx.var_by_name_or_recurse(self, &var_name).ok()? {
                     let min = Elem::from(min);
                     let max = Elem::from(max);
                     let latest = var.latest_version(self);

@@ -1,16 +1,12 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
-use crate::{
-    func_call::{apply::FuncApplier, modifier::ModifierCaller},
-    helper::CallerHelper,
-    ContextBuilder, Flatten,
-};
+use crate::{func_call::modifier::ModifierCaller, helper::CallerHelper, ContextBuilder, Flatten};
 
 use graph::{
     elem::Elem,
     nodes::{
         Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractId, EnvCtx, ExprRet,
-        Fielded, FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
+        FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
@@ -409,6 +405,9 @@ pub trait FuncCaller:
 
                         let as_var = ContextVarNode::from(node);
                         as_var.maybe_add_fields(analyzer).into_expr_err(loc)?;
+                        as_var
+                            .maybe_add_len_inplace(analyzer, ctx, loc)
+                            .into_expr_err(loc)?;
 
                         ctx.push_expr(ExprRet::Single(node), analyzer)
                             .into_expr_err(loc)?;

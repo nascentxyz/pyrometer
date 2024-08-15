@@ -104,6 +104,40 @@ pub enum Concrete {
     Array(Vec<Concrete>),
 }
 
+impl std::fmt::Display for Concrete {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        use Concrete::*;
+        match self {
+            Uint(_, val) => {
+                write!(f, "{}", val)
+            }
+            Int(_, val) => {
+                write!(f, "{}", val)
+            }
+            Bytes(_, val) => {
+                write!(f, "{}", val)
+            }
+            Address(addr) => {
+                write!(f, "{}", addr)
+            }
+            Bool(b) => {
+                write!(f, "{}", b)
+            }
+            DynBytes(bytes) => {
+                write!(f, "0x{}", hex::encode(bytes))
+            }
+            String(s) => write!(f, "{}", s),
+            Array(inner) => {
+                write!(
+                    f,
+                    "{:?}",
+                    inner.iter().map(|i| i.to_string()).collect::<Vec<_>>()
+                )
+            }
+        }
+    }
+}
+
 impl From<Concrete> for Node {
     fn from(c: Concrete) -> Node {
         Node::Concrete(c)

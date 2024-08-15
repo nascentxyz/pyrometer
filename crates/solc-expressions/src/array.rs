@@ -1,9 +1,9 @@
-use crate::{require::Require, variable::Variable, ErrType, ListAccess};
+use crate::{require::Require, variable::Variable, Assign, ErrType, ListAccess};
 
 use graph::{
     elem::{Elem, RangeDyn, RangeOp},
     nodes::{
-        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, Fielded,
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
         TmpConstruction,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
@@ -187,12 +187,40 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                 ErrType::index_oob(),
                 loc,
             )?;
+
+            let latest = len_var.latest_version_or_inherited_in_ctx(ctx, self);
+            // need to update parent's length
+            self.maybe_assign_to_parent_array(arena, ctx, len_var, latest, loc)?;
         }
-        let name = format!(
-            "{}[{}]",
-            parent.name(self).into_expr_err(loc)?,
+
+        let idx_name = if index.is_const(self, arena).into_expr_err(loc)? {
+            let min = index.evaled_range_min(self, arena).unwrap().unwrap();
+            match min {
+                Elem::Concrete(c) => {
+                    format!("{}", c.val)
+                }
+                Elem::ConcreteDyn(rd) => {
+                    if let Some(raw_bytes) = rd.as_bytes(self, false, arena) {
+                        if index
+                            .ty(self)
+                            .into_expr_err(loc)?
+                            .is_string(self)
+                            .into_expr_err(loc)?
+                        {
+                            String::from_utf8_lossy(&raw_bytes[..]).to_string()
+                        } else {
+                            format!("0x{}", hex::encode(raw_bytes))
+                        }
+                    } else {
+                        index.as_controllable_name(self, arena).into_expr_err(loc)?
+                    }
+                }
+                _ => index.as_controllable_name(self, arena).into_expr_err(loc)?,
+            }
+        } else {
             index.as_controllable_name(self, arena).into_expr_err(loc)?
-        );
+        };
+        let name = format!("{}[{idx_name}]", parent.name(self).into_expr_err(loc)?,);
         if let Some(index_var) = ctx.var_by_name_or_recurse(self, &name).into_expr_err(loc)? {
             let index_var = index_var.latest_version_or_inherited_in_ctx(ctx, self);
             let index_var = self.advance_var_in_ctx(arena, index_var, loc, ctx)?;
@@ -244,6 +272,9 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
             ContextVarNode::from(idx_access_node)
                 .maybe_add_fields(self)
+                .into_expr_err(loc)?;
+            ContextVarNode::from(idx_access_node)
+                .maybe_add_len_inplace(self, ctx, loc)
                 .into_expr_err(loc)?;
 
             self.add_edge(idx_access_node, ctx, Edge::Context(ContextEdge::Variable));
@@ -307,64 +338,64 @@ pub trait Array: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         }
     }
 
-    fn update_array_if_index_access(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: Loc,
-        maybe_index_access: ContextVarNode,
-        new_value: ContextVarNode,
-    ) -> Result<(), ExprErr> {
-        if let Some(arr) = maybe_index_access.index_access_to_array(self) {
-            // Was indeed an indexed value
-            if let Some(index) = maybe_index_access.index_access_to_index(self) {
-                // Found the associated index
-                let next_arr = self.advance_var_in_ctx(
-                    arena,
-                    arr.latest_version_or_inherited_in_ctx(ctx, self),
-                    loc,
-                    ctx,
-                )?;
-                if next_arr
-                    .underlying(self)
-                    .into_expr_err(loc)?
-                    .ty
-                    .is_dyn_builtin(self)
-                    .into_expr_err(loc)?
-                {
-                    // update the range
-                    let min = Elem::from(arr).set_indices(RangeDyn::new_for_indices(
-                        vec![(index.into(), new_value.into())],
-                        loc,
-                    ));
-                    let max = Elem::from(arr).set_indices(RangeDyn::new_for_indices(
-                        vec![(index.into(), new_value.into())],
-                        loc,
-                    ));
+    // fn update_array_if_index_access(
+    //     &mut self,
+    //     arena: &mut RangeArena<Elem<Concrete>>,
+    //     ctx: ContextNode,
+    //     loc: Loc,
+    //     maybe_index_access: ContextVarNode,
+    //     new_value: ContextVarNode,
+    // ) -> Result<(), ExprErr> {
+    //     if let Some(arr) = maybe_index_access.index_access_to_array(self) {
+    //         // Was indeed an indexed value
+    //         if let Some(index) = maybe_index_access.index_access_to_index(self) {
+    //             // Found the associated index
+    //             let next_arr = self.advance_var_in_ctx(
+    //                 arena,
+    //                 arr.latest_version_or_inherited_in_ctx(ctx, self),
+    //                 loc,
+    //                 ctx,
+    //             )?;
+    //             if next_arr
+    //                 .underlying(self)
+    //                 .into_expr_err(loc)?
+    //                 .ty
+    //                 .is_dyn_builtin(self)
+    //                 .into_expr_err(loc)?
+    //             {
+    //                 // update the range
+    //                 let min = Elem::from(arr).set_indices(RangeDyn::new_for_indices(
+    //                     vec![(index.into(), new_value.into())],
+    //                     loc,
+    //                 ));
+    //                 let max = Elem::from(arr).set_indices(RangeDyn::new_for_indices(
+    //                     vec![(index.into(), new_value.into())],
+    //                     loc,
+    //                 ));
 
-                    next_arr
-                        .set_range_min(self, arena, min)
-                        .into_expr_err(loc)?;
-                    next_arr
-                        .set_range_max(self, arena, max)
-                        .into_expr_err(loc)?;
-                }
+    //                 next_arr
+    //                     .set_range_min(self, arena, min)
+    //                     .into_expr_err(loc)?;
+    //                 next_arr
+    //                     .set_range_max(self, arena, max)
+    //                     .into_expr_err(loc)?;
+    //             }
 
-                // handle nested arrays, i.e. if:
-                // uint256[][] memory z;
-                // z[x][y] = 5;
-                // first pass sets z[x][y] = 5, second pass needs to set z[x] = x
-                self.update_array_if_index_access(
-                    arena,
-                    ctx,
-                    loc,
-                    next_arr.latest_version_or_inherited_in_ctx(ctx, self),
-                    next_arr.latest_version_or_inherited_in_ctx(ctx, self),
-                )?;
-            }
-        }
-        Ok(())
-    }
+    //             // handle nested arrays, i.e. if:
+    //             // uint256[][] memory z;
+    //             // z[x][y] = 5;
+    //             // first pass sets z[x][y] = 5, second pass needs to set z[x] = x
+    //             self.update_array_if_index_access(
+    //                 arena,
+    //                 ctx,
+    //                 loc,
+    //                 next_arr.latest_version_or_inherited_in_ctx(ctx, self),
+    //                 next_arr.latest_version_or_inherited_in_ctx(ctx, self),
+    //             )?;
+    //         }
+    //     }
+    //     Ok(())
+    // }
 
     fn set_var_as_length(
         &mut self,

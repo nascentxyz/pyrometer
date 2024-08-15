@@ -1,7 +1,7 @@
 use graph::{
     elem::*,
     nodes::{Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node, TestCommand, VariableCommand,
+    parse_test_command, AnalyzerBackend, ContextEdge, Edge, Node, TestCommand, VariableCommand,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -278,71 +278,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 
     fn test_string_literal(&mut self, s: &str) -> Option<TestCommand> {
-        let split = s.split("::").collect::<Vec<_>>();
-        if split.first().copied() == Some("pyro") {
-            match split.get(1).copied() {
-                Some("variable") => {
-                    let name = split.get(2).copied()?;
-                    match split.get(3).copied() {
-                        Some("range") => {
-                            let range = split
-                                .get(4)
-                                .copied()?
-                                .chars()
-                                .filter(|c| !c.is_whitespace())
-                                .collect::<String>();
-                            let range = range
-                                .trim_start_matches('[')
-                                .trim_end_matches(']')
-                                .split(',')
-                                .collect::<Vec<_>>();
-                            let mut min_str = *range.first()?;
-                            let mut min_neg = false;
-                            if let Some(new_min) = min_str.strip_prefix('-') {
-                                min_neg = true;
-                                min_str = new_min;
-                            }
-
-                            let mut max_str = *range.get(1)?;
-                            let mut max_neg = false;
-                            if let Some(new_max) = max_str.strip_prefix('-') {
-                                max_neg = true;
-                                max_str = new_max;
-                            }
-
-                            let min = self
-                                .concrete_number_from_str(Loc::Implicit, min_str, "", min_neg, None)
-                                .ok()?;
-                            let max = self
-                                .concrete_number_from_str(Loc::Implicit, max_str, "", max_neg, None)
-                                .ok()?;
-
-                            Some(TestCommand::Variable(
-                                name.to_string(),
-                                VariableCommand::RangeAssert { min, max },
-                            ))
-                        }
-                        _ => None,
-                    }
-                }
-                Some("constraint") => {
-                    let constraint = split.get(2).copied()?;
-                    Some(TestCommand::Constraint(constraint.to_string()))
-                }
-                Some("coverage") => match split.get(2).copied() {
-                    Some("onlyPath") => {
-                        Some(TestCommand::Coverage(graph::CoverageCommand::OnlyPath))
-                    }
-                    Some("unreachable") => {
-                        Some(TestCommand::Coverage(graph::CoverageCommand::Unreachable))
-                    }
-                    _ => None,
-                },
-                _ => None,
-            }
-        } else {
-            None
-        }
+        parse_test_command(s)
     }
 
     fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &str) -> Result<(), ExprErr> {

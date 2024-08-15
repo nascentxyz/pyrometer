@@ -92,7 +92,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
 
         let array = array.latest_version_or_inherited_in_ctx(ctx, self);
         // we have to force here to avoid length <-> array recursion
-        let target_arr = self.advance_var_in_ctx_forcible(array, loc, ctx, true)?;
+        let target_arr = self.advance_var_in_ctx_forcible(arena, array, loc, ctx, true)?;
 
         // Create the range from the current length or default to [0, uint256.max]
         let len_min = Elem::from(array)
@@ -101,13 +101,6 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         let len_max = Elem::from(array)
             .get_length()
             .min(Elem::from(Concrete::from(U256::MAX)));
-        println!(
-            "len min: {len_min}, {}",
-            Elem::from(array)
-                .get_length()
-                .minimize(self, arena)
-                .unwrap()
-        );
         let range = SolcRange::new(len_min, len_max, vec![]);
 
         let len_var = ContextVar {
@@ -196,6 +189,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
 
             let next_arr = self
                 .advance_var_in_ctx(
+                    arena,
                     arr.latest_version_or_inherited_in_ctx(array_ctx, self),
                     loc,
                     array_ctx,

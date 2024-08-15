@@ -25,11 +25,11 @@ impl AsDotStr for ContextVarNode {
         let range_str = if let Some(r) = underlying.ty.ref_range(analyzer).unwrap() {
             format!(
                 "[{}, {}]",
-                r.simplified_range_min(analyzer, arena)
+                r.evaled_range_min(analyzer, arena)
                     .unwrap()
                     .to_range_string(false, analyzer, arena)
                     .s,
-                r.simplified_range_max(analyzer, arena)
+                r.evaled_range_max(analyzer, arena)
                     .unwrap()
                     .to_range_string(false, analyzer, arena)
                     .s
@@ -92,6 +92,23 @@ impl ContextVarNode {
                 "Node type confusion: expected node to be ContextVar but it was: {e:?}"
             ))),
         }
+    }
+
+    pub fn rangeless_clone(&self, analyzer: &impl GraphBackend) -> Result<ContextVar, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        Ok(ContextVar {
+            loc: underlying.loc,
+            name: underlying.name.clone(),
+            display_name: underlying.display_name.clone(),
+            storage: underlying.storage,
+            is_tmp: underlying.is_tmp,
+            tmp_of: underlying.tmp_of,
+            dep_on: underlying.dep_on.clone(),
+            is_symbolic: underlying.is_symbolic,
+            is_return: underlying.is_return,
+            is_fundamental: underlying.is_fundamental,
+            ty: underlying.ty.rangeless_clone(),
+        })
     }
 
     pub fn storage<'a>(

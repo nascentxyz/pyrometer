@@ -172,7 +172,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         };
 
         let new_lhs = if assign {
-            let new = self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
+            let new = self.advance_var_in_ctx_forcible(arena, lhs_cvar, loc, ctx, true)?;
             let underlying = new.underlying_mut(self).into_expr_err(loc)?;
             underlying.tmp_of = Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar)));
 
@@ -191,7 +191,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             if let Ok(Some(existing)) =
                 self.get_unchanged_tmp_variable(arena, &new_lhs_underlying.display_name, ctx)
             {
-                self.advance_var_in_ctx_forcible(existing, loc, ctx, true)?
+                self.advance_var_in_ctx_forcible(arena, existing, loc, ctx, true)?
             } else {
                 // will potentially mutate the ty from concrete to builtin with a concrete range
                 new_lhs_underlying
@@ -231,6 +231,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         // to prevent some recursive referencing, forcibly increase lhs_cvar
         self.advance_var_in_ctx_forcible(
+            arena,
             lhs_cvar.latest_version_or_inherited_in_ctx(ctx, self),
             loc,
             ctx,
@@ -350,7 +351,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .set_range_max(self, arena, expr)
                     .into_expr_err(loc)?;
 
-                self.advance_var_in_ctx_forcible(lhs_cvar, loc, ctx, true)?;
+                self.advance_var_in_ctx_forcible(arena, lhs_cvar, loc, ctx, true)?;
                 ctx.push_expr(ExprRet::Single(out_var.into()), self)
                     .into_expr_err(loc)?;
                 Ok(())
@@ -423,7 +424,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<Option<ExprRet>, ExprErr> {
         // x - y >= type(x).min
         let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
-        let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
+        let tmp_lhs = self.advance_var_in_ctx_forcible(arena, new_lhs, loc, ctx, true)?;
 
         // in checked subtraction, we have to make sure x - y >= type(x).min ==> x >= type(x).min + y
         // get the lhs min
@@ -491,7 +492,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<Option<ExprRet>, ExprErr> {
         // lhs + rhs <= type(lhs).max
         let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
-        let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
+        let tmp_lhs = self.advance_var_in_ctx_forcible(arena, new_lhs, loc, ctx, true)?;
 
         // get type(lhs).max
         let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
@@ -561,7 +562,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<Option<ExprRet>, ExprErr> {
         // lhs * rhs <= type(lhs).max
         let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
-        let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
+        let tmp_lhs = self.advance_var_in_ctx_forcible(arena, new_lhs, loc, ctx, true)?;
 
         // get type(lhs).max
         let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();
@@ -670,7 +671,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         // lhs ** rhs <= type(lhs).max
         let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
-        let tmp_lhs = self.advance_var_in_ctx_forcible(new_lhs, loc, ctx, true)?;
+        let tmp_lhs = self.advance_var_in_ctx_forcible(arena, new_lhs, loc, ctx, true)?;
 
         // get type(lhs).max
         let max_conc = lhs.ty_max_concrete(self).into_expr_err(loc)?.unwrap();

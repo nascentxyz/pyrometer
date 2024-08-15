@@ -1,5 +1,4 @@
-use crate::{assign::Assign, env::Env, ContextBuilder};
-use graph::AsDotStr;
+use crate::{assign::Assign, env::Env, ContextBuilder, ListAccess};
 
 use graph::{
     elem::Elem,
@@ -42,8 +41,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 target_ctx,
                 ident.loc,
                 arena,
-                &|analyzer, _arena, edge_ctx, _loc| {
-                    let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
+                &|analyzer, arena, edge_ctx, _loc| {
+                    let var = analyzer.advance_var_in_ctx(arena, cvar, ident.loc, edge_ctx)?;
                     edge_ctx
                         .push_expr(ExprRet::Single(var.into()), analyzer)
                         .into_expr_err(ident.loc)
@@ -62,8 +61,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 target_ctx,
                 ident.loc,
                 arena,
-                &|analyzer, _arena, edge_ctx, _loc| {
-                    let var = analyzer.advance_var_in_ctx(cvar, ident.loc, edge_ctx)?;
+                &|analyzer, arena, edge_ctx, _loc| {
+                    let var = analyzer.advance_var_in_ctx(arena, cvar, ident.loc, edge_ctx)?;
                     edge_ctx
                         .push_expr(ExprRet::Single(var.into()), analyzer)
                         .into_expr_err(ident.loc)
@@ -142,9 +141,9 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                                 target_ctx,
                                 ident.loc,
                                 arena,
-                                &|analyzer, _arena, edge_ctx, _loc| {
-                                    let var =
-                                        analyzer.advance_var_in_ctx(prev, ident.loc, edge_ctx)?;
+                                &|analyzer, arena, edge_ctx, _loc| {
+                                    let var = analyzer
+                                        .advance_var_in_ctx(arena, prev, ident.loc, edge_ctx)?;
                                     edge_ctx
                                         .push_expr(ExprRet::Single(var.into()), analyzer)
                                         .into_expr_err(ident.loc)
@@ -195,6 +194,9 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
             ContextVarNode::from(new_cvarnode)
                 .maybe_add_fields(self)
+                .into_expr_err(ident.loc)?;
+            ContextVarNode::from(new_cvarnode)
+                .maybe_add_len_inplace(self, ctx, ident.loc)
                 .into_expr_err(ident.loc)?;
 
             target_ctx
@@ -385,8 +387,9 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 let lhs = ContextVarNode::from(self.add_node(var));
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
-
                 lhs.maybe_add_fields(self).into_expr_err(loc)?;
+                lhs.maybe_add_len_inplace(self, ctx, loc)
+                    .into_expr_err(loc)?;
                 let rhs = ContextVarNode::from(*rhs);
 
                 self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
@@ -417,6 +420,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
                 lhs.maybe_add_fields(self).into_expr_err(loc)?;
+                lhs.maybe_add_len_inplace(self, ctx, loc)
+                    .into_expr_err(loc)?;
                 Ok(false)
             }
             (l @ ExprRet::Single(_lhs), Some(ExprRet::Multi(rhs_sides))) => Ok(rhs_sides
@@ -492,11 +497,12 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
     /// create this new variable depending on if there are two successively identical version.
     fn advance_var_in_ctx(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         cvar_node: ContextVarNode,
         loc: Loc,
         ctx: ContextNode,
     ) -> Result<ContextVarNode, ExprErr> {
-        self.advance_var_in_ctx_forcible(cvar_node, loc, ctx, false)
+        self.advance_var_in_ctx_forcible(arena, cvar_node, loc, ctx, false)
     }
 
     #[tracing::instrument(level = "trace", skip_all, fields(ctx = %ctx.path(self)))]
@@ -504,6 +510,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
     /// denoting whether or not to force the creation, skipping an optimization.
     fn advance_var_in_ctx_forcible(
         &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
         cvar_node: ContextVarNode,
         loc: Loc,
         ctx: ContextNode,
@@ -543,11 +550,11 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 )),
             ));
         }
+
         let mut new_cvar = cvar_node
             .latest_version_or_inherited_in_ctx(ctx, self)
-            .underlying(self)
-            .into_expr_err(loc)?
-            .clone();
+            .rangeless_clone(self)
+            .into_expr_err(loc)?;
         // get the old context
         let new_cvarnode;
 
@@ -570,11 +577,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 }
 
                 // we ignore any errors here
-
-                let _ = new_cvar.ty.set_range(
-                    Elem::from(cvar_node.latest_version_or_inherited_in_ctx(ctx, self)).into(),
-                );
-
                 new_cvar.is_fundamental = None;
 
                 new_cvar.loc = Some(loc);
@@ -655,7 +657,18 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         }
 
         self.mark_dirty(new_cvarnode);
-
+        if !cvar_node.is_fielded(self).into_expr_err(loc)? {
+            let _ = ContextVarNode::from(new_cvarnode).set_range_min(
+                self,
+                arena,
+                Elem::from(cvar_node),
+            );
+            let _ = ContextVarNode::from(new_cvarnode).set_range_max(
+                self,
+                arena,
+                Elem::from(cvar_node),
+            );
+        }
         Ok(ContextVarNode::from(new_cvarnode))
     }
 

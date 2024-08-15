@@ -2,7 +2,6 @@ use crate::helper::CallerHelper;
 use crate::member_access::ListAccess;
 use crate::variable::Variable;
 use crate::Flatten;
-use graph::range_string::ToRangeString;
 use graph::AsDotStr;
 
 use graph::{
@@ -389,7 +388,7 @@ pub trait FuncApplier:
                     }
                 } else {
                     let next_cvar = self
-                        .advance_var_in_ctx_forcible(new_cvar, loc, target_ctx, true)
+                        .advance_var_in_ctx_forcible(arena, new_cvar, loc, target_ctx, true)
                         .unwrap();
                     let casted = Elem::Expr(RangeExpr::new(
                         Elem::from(new_cvar),

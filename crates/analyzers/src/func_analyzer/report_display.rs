@@ -1,4 +1,3 @@
-use crate::bounds::killed_kind_color;
 use crate::{FunctionVarsBoundAnalysis, LocStrSpan, ReportDisplay, ReportKind};
 
 use graph::{elem::Elem, nodes::Concrete, GraphBackend};

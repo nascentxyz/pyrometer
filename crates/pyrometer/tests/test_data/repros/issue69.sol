@@ -1,3 +1,7 @@
+// SPDX-License-Identifier: MIT or APACHE2
+
+pragma solidity ^0.8.0;
+
 contract Test {
     function backdoor(uint256 x, uint256 y) external pure {
         uint256 number = 99;

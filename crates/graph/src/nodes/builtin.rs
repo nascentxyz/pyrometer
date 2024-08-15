@@ -115,6 +115,14 @@ impl BuiltInNode {
         Ok(self.underlying(analyzer)?.is_dyn())
     }
 
+    pub fn is_string(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.is_string())
+    }
+
+    pub fn is_bytes(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.underlying(analyzer)?.is_bytes())
+    }
+
     /// Returns whether the builtin is indexable
     pub fn is_indexable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_indexable())
@@ -368,6 +376,14 @@ impl Builtin {
                 | Builtin::Mapping(..)
                 | Builtin::String
         )
+    }
+
+    pub fn is_string(&self) -> bool {
+        matches!(self, Builtin::String)
+    }
+
+    pub fn is_bytes(&self) -> bool {
+        matches!(self, Builtin::DynamicBytes)
     }
 
     /// Returns whether the builtin requires input to perform an operation on (like addition)

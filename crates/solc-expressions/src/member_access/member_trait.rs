@@ -275,7 +275,7 @@ pub trait MemberAccess:
                 self.struct_var_member_access(ctx, cvar, *struct_node, name, loc)
             }
             VarType::User(TypeNode::Error(err_node), _) => {
-                self.error_var_member_access(ctx, cvar, *err_node, name, loc)
+                self.error_var_member_access(cvar, *err_node, name, loc)
             }
             VarType::User(TypeNode::Enum(enum_node), _) => {
                 self.enum_member_access(ctx, *enum_node, name, loc)

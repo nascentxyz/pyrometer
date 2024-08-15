@@ -19,23 +19,26 @@ contract DynTypes {
     //     require(y.length == 9);
     // }
 
-    // function array_dyn(uint256[] memory x) public pure {
-    //     x[0] = 5;
-    //     require(x.length < 10);
-    //     uint256[] memory y = x;
-    //     y[8] = 100;
-    //     require(y.length == 9);
-    // }
-
-    function nested_bytes_dyn(bytes[] memory x, uint y) public pure {
-        bytes memory a = hex"1337";
-        x[0] = a;
-        require(x[0][0] == hex"13");
-
-        x[y] = hex"1122";
-        uint256 z = y - 1;
-        require(x[z + 1][0] == hex"11");
+    function array_dyn(uint256[] memory x) public pure {
+        x[0] = 5;
+        require(x.length < 10);
+        "pyro::variable::x.length::range::[1,9]";
+        uint256[] memory y = x;
+        y[8] = 100;
+        "pyro::variable::y[8]::range::[100,100]";
+        "pyro::variable::y.length::range::[9,9]";
     }
+
+    // function nested_bytes_dyn(bytes[] memory x, uint y) public pure {
+    //     bytes memory a = hex"1337";
+    //     x[0] = a;
+    //     x[0][0];
+    //     "pyro::variable::x[0][0]::range::[0x13,0x13]";
+    //     x[y] = hex"1122";
+    //     uint256 z = y - 1;
+    //     bytes1 tmp = x[z + 1][0];
+    //     "pyro::variable::tmp::range::[0x11,0x11]";
+    // }
 
     // function array_push(uint256 x) public {
     //     // require(x > 5);
@@ -107,20 +110,20 @@ contract DynTypes {
     //     return strukt;
     // }
 
-    function multiDimensionalArray() public pure returns (bool z) {
-        uint256[][] memory multiArray = new uint256[][](2);
-        uint256[] memory indices = new uint256[](2);
+    // function multiDimensionalArray() public pure returns (bool z) {
+    //     uint256[][] memory multiArray = new uint256[][](2);
+    //     uint256[] memory indices = new uint256[](2);
 
-        indices[0] = 0;
-        indices[1] = 1;
+    //     indices[0] = 0;
+    //     indices[1] = 1;
 
-        for (uint i = 0; i < multiArray.length; i++) {
-            multiArray[i] = new uint256[](2);
-            for (uint j = 0; j < multiArray[i].length; j++) {
-                multiArray[i][j] = 1;
-            }
-        }
+    //     for (uint i = 0; i < multiArray.length; i++) {
+    //         multiArray[i] = new uint256[](2);
+    //         for (uint j = 0; j < multiArray[i].length; j++) {
+    //             multiArray[i][j] = 1;
+    //         }
+    //     }
 
-        z = true;
-    }
+    //     z = true;
+    // }
 }

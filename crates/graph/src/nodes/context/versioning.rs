@@ -1,7 +1,7 @@
 use crate::nodes::Context;
 use crate::{
     nodes::{CallFork, ContextNode, FunctionNode, KilledKind},
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
+    AnalyzerBackend, GraphBackend, Node,
 };
 use shared::GraphError;
 
