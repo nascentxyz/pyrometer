@@ -8,7 +8,7 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
-use shared::{ExprErr, FlatExpr, IntoExprErr, RangeArena, StorageLocation};
+use shared::{ExprErr, FlatExpr, GraphError, IntoExprErr, RangeArena, StorageLocation};
 
 use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
@@ -26,10 +26,12 @@ pub trait YulFuncCaller:
         ctx: ContextNode,
         stack: &mut Vec<FlatExpr>,
         name: &str,
-        inputs: ExprRet,
+        mut inputs: ExprRet,
         assembly_block_idx: usize,
         loc: Loc,
     ) -> Result<(), ExprErr> {
+        self.maybe_location_to_uint(ctx, &mut inputs, loc)
+            .into_expr_err(loc)?;
         match name {
             "caller" => {
                 let t = self.msg_access(ctx, "sender", loc)?;
@@ -528,6 +530,47 @@ pub trait YulFuncCaller:
                 }
             }
         }
+    }
+
+    fn maybe_location_to_uint(
+        &mut self,
+        ctx: ContextNode,
+        inputs: &mut ExprRet,
+        loc: Loc,
+    ) -> Result<(), GraphError> {
+        match inputs {
+            ExprRet::Null | ExprRet::SingleLiteral(_) | ExprRet::CtxKilled(_) => {}
+            ExprRet::Single(ref mut i) => {
+                let var = ContextVarNode::from(*i);
+                if !var.is_field(self) {
+                    let res = match var.storage(self)? {
+                        Some(StorageLocation::MemoryPtr(..))
+                        | Some(StorageLocation::StoragePtr(..)) => {
+                            // TODO: Whenever we model storage and memory, produce accurate values here
+                            let b = Builtin::Uint(256);
+                            let mut new_var = ContextVar::new_from_builtin(
+                                loc,
+                                self.builtin_or_add(b).into(),
+                                self,
+                            )?;
+                            new_var.display_name = format!("{}.location", var.display_name(self)?);
+                            let node = ContextVarNode::from(self.add_node(new_var));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            ctx.add_var(node, self)?;
+                            node
+                        }
+                        _ => var,
+                    };
+                    *i = res.0.into();
+                }
+            }
+            ExprRet::Multi(ref mut inner) => {
+                inner
+                    .iter_mut()
+                    .try_for_each(|i: &mut ExprRet| self.maybe_location_to_uint(ctx, i, loc))?;
+            }
+        }
+        Ok(())
     }
 
     fn return_yul(

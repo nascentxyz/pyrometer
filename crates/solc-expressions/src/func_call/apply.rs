@@ -300,7 +300,6 @@ pub trait FuncApplier:
             .iter()
             .enumerate()
             .map(|(i, ret)| {
-                println!("{:?}", ret.var());
                 let mut new_var = ret.var().underlying(self).unwrap().clone();
                 let new_name = format!(
                     "tmp_{}({}.{i})",

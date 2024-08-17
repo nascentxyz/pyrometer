@@ -1,13 +1,13 @@
 use crate::{
     nodes::{
-        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode,
-        SourceUnitNode, SourceUnitPartNode, YulFunctionNode,
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, SourceUnitNode,
+        SourceUnitPartNode, YulFunctionNode,
     },
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
 
-use alloy_primitives::{B256, U256};
+use alloy_primitives::B256;
 
 use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
@@ -451,10 +451,11 @@ impl FunctionNode {
     pub fn add_params_to_ctx(
         &self,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
     ) -> Result<(), GraphError> {
         self.params(analyzer).iter().try_for_each(|param| {
-            let _ = param.maybe_add_to_ctx(analyzer, ctx)?;
+            let _ = param.maybe_add_to_ctx(analyzer, arena, ctx)?;
             Ok(())
         })
     }
@@ -1000,6 +1001,7 @@ impl FunctionParamNode {
     pub fn maybe_add_to_ctx(
         &self,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
     ) -> Result<bool, GraphError> {
         let loc = self.loc(analyzer)?;
@@ -1011,7 +1013,7 @@ impl FunctionParamNode {
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::Variable));
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::CalldataVariable));
             var.maybe_add_fields(analyzer)?;
-            var.maybe_add_len_inplace(analyzer, ctx, loc)?;
+            var.maybe_add_len_inplace(analyzer, arena, ctx, loc)?;
             Ok(true)
         } else {
             Ok(false)

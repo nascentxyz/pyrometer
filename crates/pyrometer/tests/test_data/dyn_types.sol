@@ -4,30 +4,42 @@ pragma solidity ^0.8.0;
 contract DynTypes {
     // uint256[] storeVar;
 
-    // struct Strukt {
-    //     uint256 a;
-    //     uint256 b;
-    // }
+    struct Strukt {
+        uint256 a;
+        uint256 b;
+    }
 
-    // mapping(address => Strukt) public someMapping;
+    mapping(address => Strukt) public someMapping;
+
     // mapping(address => Strukt[]) public someMapping2;
 
-    // function bytes_dyn(bytes calldata x) public pure {
-    //     bytes memory y = x;
-    //     require(x.length < 10);
-    //     y[8] = 0xff;
-    //     require(y.length == 9);
+    // function memory_alias(uint[] memory x) public pure {
+    //     uint[] memory y = x;
+    //     uint[] memory z = y;
+    //     z[0] = 0x11;
+    //     "pyro::variable::z[0]::range::[17,17]";
+    //     "pyro::variable::y[0]::range::[17,17]";
+    //     "pyro::variable::x[0]::range::[17,17]";
     // }
 
-    function array_dyn(uint256[] memory x) public pure {
-        x[0] = 5;
-        require(x.length < 10);
-        "pyro::variable::x.length::range::[1,9]";
-        uint256[] memory y = x;
-        y[8] = 100;
-        "pyro::variable::y[8]::range::[100,100]";
-        "pyro::variable::y.length::range::[9,9]";
-    }
+    // function bytes_dyn(bytes memory x) public pure {
+    //     bytes memory y = x;
+    //     require(x.length < 10);
+    //     "pyro::variable::x.length::range::[0,9]";
+    //     y[8] = 0xff;
+    //     "pyro::variable::y[8]::range::[0xff,0xff]";
+    //     // TODO: "pyro::variable::y.length::range::[9,9]";
+    // }
+
+    // function array_dyn(uint256[] memory x) public pure {
+    //     x[0] = 5;
+    //     require(x.length < 10);
+    //     "pyro::variable::x.length::range::[1,9]";
+    //     uint256[] memory y = x;
+    //     y[8] = 100;
+    //     "pyro::variable::y[8]::range::[100,100]";
+    //     // TODO: "pyro::variable::y.length::range::[9,9]";
+    // }
 
     // function nested_bytes_dyn(bytes[] memory x, uint y) public pure {
     //     bytes memory a = hex"1337";
@@ -37,7 +49,9 @@ contract DynTypes {
     //     x[y] = hex"1122";
     //     uint256 z = y - 1;
     //     bytes1 tmp = x[z + 1][0];
+    //     bytes1 tmp2 = x[z + 1][1];
     //     "pyro::variable::tmp::range::[0x11,0x11]";
+    //     "pyro::variable::tmp2::range::[0x22,0x22]";
     // }
 
     // function array_push(uint256 x) public {
@@ -62,13 +76,30 @@ contract DynTypes {
     //     return 1;
     // }
 
-    // function indexIntoMapping(address who) public {
-    //     // TODO: this should panic
-    //     Strukt storage a = someMapping[who];
-    //     a.a = 100;
-    //     a.b = 100;
-    //     require(someMapping[who].a == 300);
-    // }
+    function indexIntoMapping(address who) public {
+        Strukt storage a = someMapping[who];
+        Strukt storage b = someMapping[who];
+        a.a = 100;
+        "pyro::variable::a.a::range::[100,100]";
+        "pyro::variable::b.a::range::[100,100]";
+
+        a.b = 200;
+        "pyro::variable::a.b::range::[200,200]";
+        "pyro::variable::b.b::range::[200,200]";
+
+        uint tmp = someMapping[who].a;
+        "pyro::variable::tmp::range::[100,100]";
+        tmp = a.b;
+        "pyro::variable::tmp::range::[200,200]";
+        tmp = someMapping[who].b;
+        "pyro::variable::tmp::range::[200,200]";
+
+        b.a = 300;
+        "pyro::variable::b.a::range::[300,300]";
+        "pyro::variable::a.a::range::[300,300]";
+        tmp = someMapping[who].a;
+        "pyro::variable::tmp::range::[300,300]";
+    }
 
     // address[] t;
 

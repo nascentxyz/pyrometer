@@ -74,8 +74,8 @@ impl BuiltInNode {
             Builtin::DynamicBytes | Builtin::Bytes(_) => Ok(VarType::BuiltIn(
                 analyzer.builtin_or_add(Builtin::Bytes(1)).into(),
                 Some(SolcRange::new(
-                    Elem::from(Concrete::from(vec![0x00])),
-                    Elem::from(Concrete::from(vec![0xff])),
+                    Elem::from(Concrete::from(0x00)),
+                    Elem::from(Concrete::from(0xff)),
                     vec![],
                 )),
             )),

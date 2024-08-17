@@ -59,6 +59,33 @@ impl ContextVar {
             && self.ty == other.ty
     }
 
+    pub fn eq_ignore_loc_print(&self, other: &Self) -> bool {
+        println!(
+            "---------- comparing: {} to {} ----------",
+            self.display_name, other.display_name
+        );
+        println!("name match: {}", self.name == other.name);
+        println!(
+            "display_name match: {}",
+            self.display_name == other.display_name
+        );
+        println!("storage match: {}", self.storage == other.storage);
+        println!("is_tmp match: {}", self.is_tmp == other.is_tmp);
+        println!("tmp_of match: {}", self.tmp_of == other.tmp_of);
+        println!(
+            "is_symbolic match: {}",
+            self.is_symbolic == other.is_symbolic
+        );
+        println!("is_return match: {}", self.is_return == other.is_return);
+        println!("ty match: {}", self.ty == other.ty);
+        if self.ty != other.ty {
+            println!("lhs ty: {:#?}", self.ty);
+            println!("rhs ty: {:#?}", other.ty);
+        }
+        println!("-----------------------");
+        self.eq_ignore_loc(other)
+    }
+
     pub fn is_tmp(&self) -> bool {
         self.is_tmp || self.tmp_of.is_some()
     }
@@ -749,11 +776,20 @@ impl ContextVar {
     ) -> Option<Self> {
         if let Some(name) = param.name {
             if let Some(ty) = VarType::try_from_idx(analyzer, param.ty) {
+                let storage = match param.storage {
+                    Some(shared::StorageLocation::Memory(inner)) => {
+                        Some(shared::StorageLocation::MemoryPtr(inner))
+                    }
+                    Some(shared::StorageLocation::Storage(inner)) => {
+                        Some(shared::StorageLocation::StoragePtr(inner))
+                    }
+                    o => o,
+                };
                 Some(ContextVar {
                     loc: Some(param.loc),
                     name: name.name.clone(),
                     display_name: name.name,
-                    storage: param.storage,
+                    storage,
                     is_tmp: false,
                     tmp_of: None,
                     dep_on: None,
@@ -776,11 +812,20 @@ impl ContextVar {
     ) -> Option<Self> {
         if let Some(name) = ret.name {
             if let Some(ty) = VarType::try_from_idx(analyzer, ret.ty) {
+                let storage = match ret.storage {
+                    Some(shared::StorageLocation::Memory(inner)) => {
+                        Some(shared::StorageLocation::MemoryPtr(inner))
+                    }
+                    Some(shared::StorageLocation::Storage(inner)) => {
+                        Some(shared::StorageLocation::StoragePtr(inner))
+                    }
+                    o => o,
+                };
                 Some(ContextVar {
                     loc: Some(ret.loc),
                     name: name.name.clone(),
                     display_name: name.name,
-                    storage: ret.storage,
+                    storage,
                     is_tmp: false,
                     tmp_of: None,
                     dep_on: None,
@@ -809,11 +854,20 @@ impl ContextVar {
         };
 
         if let Some(ty) = VarType::try_from_idx(analyzer, ret.ty) {
+            let storage = match ret.storage {
+                Some(shared::StorageLocation::Memory(inner)) => {
+                    Some(shared::StorageLocation::MemoryPtr(inner))
+                }
+                Some(shared::StorageLocation::Storage(inner)) => {
+                    Some(shared::StorageLocation::StoragePtr(inner))
+                }
+                o => o,
+            };
             Ok(Some(ContextVar {
                 loc: Some(ret.loc),
                 name: name.clone(),
                 display_name: name,
-                storage: ret.storage,
+                storage,
                 is_tmp,
                 tmp_of: None,
                 dep_on: None,

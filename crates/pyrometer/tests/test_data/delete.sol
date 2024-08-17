@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT or APACHE2
 pragma solidity ^0.8.0;
 
 contract ComplexDelete {

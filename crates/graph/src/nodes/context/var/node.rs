@@ -259,6 +259,49 @@ impl ContextVarNode {
         Ok(self.is_err(analyzer)? || self.is_struct(analyzer)?)
     }
 
+    pub fn maybe_field_name(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<String>, GraphError> {
+        if self.is_field(analyzer) {
+            let name = self.name(analyzer)?;
+            return Ok(name.split('.').last().map(|i| i.to_string()));
+        }
+        Ok(None)
+    }
+
+    pub fn find_field(
+        &self,
+        analyzer: &impl GraphBackend,
+        to_find: &str,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        Ok(self.fielded_to_fields(analyzer)?.iter().find_map(|field| {
+            if let Ok(Some(name)) = field.maybe_field_name(analyzer) {
+                if name == to_find {
+                    return Some(field.latest_version(analyzer));
+                }
+            }
+            None
+        }))
+    }
+
+    pub fn maybe_location_alias(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::LocationAlias))
+            .map(|edge| ContextVarNode::from(edge.target()).latest_version(analyzer))
+    }
+
+    pub fn maybe_incoming_aliases(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Incoming)
+            .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::LocationAlias))
+            .map(|edge| ContextVarNode::from(edge.source()).latest_version(analyzer))
+            .collect()
+    }
+
     pub fn fielded_to_fields(
         &self,
         analyzer: &impl GraphBackend,
@@ -333,6 +376,15 @@ impl ContextVarNode {
         } else {
             None
         }
+    }
+
+    pub fn field_to_fielded(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+        let arr = analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::AttrAccess("field")))
+            .map(|edge| edge.target())?;
+        Some(ContextVarNode::from(arr).latest_version(analyzer))
     }
 
     pub fn len_var_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {

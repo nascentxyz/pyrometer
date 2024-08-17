@@ -543,25 +543,12 @@ pub fn exec_bit_xor(
         _ => {}
     }
 
-    println!("lhs_min: {lhs_min}");
-    println!("lhs_max: {lhs_max}");
-    println!("rhs_min: {rhs_min}");
-    println!("rhs_max: {rhs_max}");
-
     let mut candidates = vec![
         lhs_min.range_bit_xor(rhs_min),
         lhs_min.range_bit_xor(rhs_max),
         lhs_max.range_bit_xor(rhs_min),
         lhs_max.range_bit_xor(rhs_max),
     ];
-
-    println!(
-        "candidates: {:#?}",
-        candidates
-            .iter()
-            .map(|i| format!("{}", i.as_ref().unwrap()))
-            .collect::<Vec<_>>()
-    );
 
     let zero = Elem::from(Concrete::from(U256::ZERO));
     let negative_one = Elem::from(Concrete::from(I256::MINUS_ONE));

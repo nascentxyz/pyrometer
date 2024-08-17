@@ -49,6 +49,12 @@ pub enum ExprRet {
     Multi(Vec<ExprRet>),
 }
 
+impl From<ContextVarNode> for ExprRet {
+    fn from(c: ContextVarNode) -> Self {
+        ExprRet::Single(c.0.into())
+    }
+}
+
 impl ExprRet {
     /// Converts the expression return into a debug string
     pub fn debug_str(&self, analyzer: &impl GraphBackend<Node = Node>) -> String {

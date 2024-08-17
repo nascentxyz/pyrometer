@@ -15,6 +15,8 @@ contract PlusPlus {
         "pyro::variable::index::range::[4, 4]";
         uint x = map[3];
         uint y = map[4];
+        x;
+        y;
         "pyro::variable::x::range::[1, 1]";
         "pyro::variable::y::range::[2, 2]";
     }

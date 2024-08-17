@@ -254,25 +254,22 @@ impl AnalyzerLike for Analyzer {
                     .graph
                     .node_indices()
                     .find_map(|node| match self.node(node) {
-                        Node::Context(context) => {
-                            println!("context path: {}", context.path);
-                            match context.killed {
-                                Some((_, KilledKind::ParseError)) => {
-                                    let edges = graph::nodes::ContextNode::from(node)
-                                        .all_edges(self)
-                                        .unwrap();
-                                    let reconstruction_edge = *edges
-                                        .iter()
-                                        .filter(|c| c.underlying(self).unwrap().killed.is_some())
-                                        .take(1)
-                                        .next()
-                                        .unwrap_or(&ContextNode::from(node));
+                        Node::Context(context) => match context.killed {
+                            Some((_, KilledKind::ParseError)) => {
+                                let edges = graph::nodes::ContextNode::from(node)
+                                    .all_edges(self)
+                                    .unwrap();
+                                let reconstruction_edge = *edges
+                                    .iter()
+                                    .filter(|c| c.underlying(self).unwrap().killed.is_some())
+                                    .take(1)
+                                    .next()
+                                    .unwrap_or(&ContextNode::from(node));
 
-                                    Some(reconstruction_edge)
-                                }
-                                _e => None,
+                                Some(reconstruction_edge)
                             }
-                        }
+                            _e => None,
+                        },
                         _ => None,
                     })
                     .unwrap();

@@ -381,10 +381,10 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 Ok(())
             }
             _ => {
-                println!(
-                    "RET TRY_CATCH: {try_catch}, {:#?}",
-                    callee_ctx.return_nodes(self).unwrap()
-                );
+                // println!(
+                //     "RET TRY_CATCH: {try_catch}, {:#?}",
+                //     callee_ctx.return_nodes(self).unwrap()
+                // );
                 if callee_ctx.is_anonymous_fn_call(self).into_expr_err(loc)? {
                     return Ok(());
                 }

@@ -179,29 +179,34 @@ impl RangePart {
 
 impl From<AnalysisItem> for Label<LocStrSpan> {
     fn from(val: AnalysisItem) -> Self {
-        let (color, order, priority) = if val.init {
-            (Color::Magenta, val.order, -1)
-        } else {
-            (
-                match val.storage {
-                    Some(StorageLocation::Memory(..)) => Color::Blue,
-                    Some(StorageLocation::Storage(..)) => Color::Green,
-                    Some(StorageLocation::Calldata(..)) => Color::White,
-                    Some(StorageLocation::Block(..)) => Color::Magenta,
-                    Some(StorageLocation::Msg(..)) => Color::Cyan,
-                    None => Color::Cyan,
-                },
-                val.order,
-                0,
-            )
-        };
+        let (color, order, priority) =
+            if val.init {
+                (Color::Magenta, val.order, -1)
+            } else {
+                (
+                    match val.storage {
+                        Some(StorageLocation::Memory(..))
+                        | Some(StorageLocation::MemoryPtr(..)) => Color::Blue,
+                        Some(StorageLocation::Storage(..))
+                        | Some(StorageLocation::StoragePtr(..)) => Color::Green,
+                        Some(StorageLocation::Calldata(..)) => Color::White,
+                        Some(StorageLocation::Block(..)) => Color::Magenta,
+                        Some(StorageLocation::Msg(..)) => Color::Cyan,
+                        None => Color::Cyan,
+                    },
+                    val.order,
+                    0,
+                )
+            };
 
         Label::new(val.loc)
             .with_message(format!(
                 "{}\"{}\"{}{}",
                 match val.storage {
-                    Some(StorageLocation::Memory(..)) => "Memory var ",
-                    Some(StorageLocation::Storage(..)) => "Storage var ",
+                    Some(StorageLocation::Memory(..)) | Some(StorageLocation::MemoryPtr(..)) =>
+                        "Memory var ",
+                    Some(StorageLocation::Storage(..)) | Some(StorageLocation::StoragePtr(..)) =>
+                        "Storage var ",
                     Some(StorageLocation::Calldata(..)) => "Calldata var ",
                     Some(StorageLocation::Block(..)) => "Block var ",
                     Some(StorageLocation::Msg(..)) => "Msg var ",

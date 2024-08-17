@@ -1,7 +1,7 @@
 use graph::{
     elem::*,
     nodes::{Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    parse_test_command, AnalyzerBackend, ContextEdge, Edge, Node, TestCommand, VariableCommand,
+    parse_test_command, AnalyzerBackend, ContextEdge, Edge, Node, TestCommand,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 

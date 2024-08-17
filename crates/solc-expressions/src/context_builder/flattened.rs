@@ -549,7 +549,7 @@ pub trait Flatten:
                             };
                             prev_if = Some(if_chain);
                         }
-                        CatchClause::Simple(loc, maybe_bytes, block) => {
+                        CatchClause::Simple(loc, _maybe_bytes, block) => {
                             if_chain.loc = *loc;
                             let catch_all_body = self.expr_stack().len();
                             self.traverse_statement(block, unchecked);
@@ -1354,7 +1354,7 @@ pub trait Flatten:
         let ctx = ContextNode::from(self.add_node(Node::Context(raw_ctx)));
         self.add_edge(ctx, func, Edge::Context(ContextEdge::Context));
 
-        let res = func.add_params_to_ctx(self, ctx).into_expr_err(loc);
+        let res = func.add_params_to_ctx(self, arena, ctx).into_expr_err(loc);
         self.add_if_err(res);
 
         let msg = self.msg().underlying(self).unwrap().clone();
@@ -1841,7 +1841,7 @@ pub trait Flatten:
                 let mut new_var = self
                     .advance_var_in_ctx(arena, cvar.into(), loc, ctx)
                     .unwrap();
-                new_var.sol_delete_range(self).into_expr_err(loc)
+                new_var.sol_delete_range(self, arena).into_expr_err(loc)
             }
             ExprRet::Multi(inner) => inner
                 .into_iter()

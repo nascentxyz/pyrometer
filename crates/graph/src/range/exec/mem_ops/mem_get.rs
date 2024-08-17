@@ -1,6 +1,6 @@
 use crate::GraphBackend;
 use crate::{
-    nodes::Concrete,
+    nodes::{Concrete, ContextVarNode},
     range::{elem::*, exec_traits::*},
 };
 
@@ -174,6 +174,43 @@ pub fn exec_get_length(
     } else {
         let new_min = lhs_min.simplify_minimize(analyzer, arena).ok()?;
         new_min.range_get_length()
+    }
+}
+
+pub fn exec_get_field(
+    lhs: &Elem<Concrete>,
+    rhs: &Elem<Concrete>,
+    maximize: bool,
+    analyzer: &impl GraphBackend,
+    arena: &mut RangeArena<Elem<Concrete>>,
+) -> Option<Elem<Concrete>> {
+    match (lhs, rhs) {
+        (
+            Elem::Reference(Reference { idx, .. }),
+            Elem::Concrete(RangeConcrete {
+                val: Concrete::String(name),
+                ..
+            }),
+        ) => {
+            if let Some(field) = ContextVarNode::from(*idx).find_field(analyzer, name).ok()? {
+                if maximize {
+                    Some(
+                        Elem::from(field)
+                            .maximize(analyzer, arena)
+                            .unwrap_or(Elem::Null),
+                    )
+                } else {
+                    Some(
+                        Elem::from(field)
+                            .minimize(analyzer, arena)
+                            .unwrap_or(Elem::Null),
+                    )
+                }
+            } else {
+                Some(Elem::Null)
+            }
+        }
+        _ => Some(Elem::Null),
     }
 }
 

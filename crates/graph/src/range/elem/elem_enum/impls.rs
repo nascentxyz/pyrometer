@@ -260,6 +260,11 @@ impl<T: Ord> Elem<T> {
         let expr = RangeExpr::new(self, RangeOp::GetIndex, other);
         Elem::Expr(expr)
     }
+
+    pub fn get_field(self, name: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::GetField, name);
+        Elem::Expr(expr)
+    }
 }
 
 impl Elem<Concrete> {

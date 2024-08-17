@@ -406,7 +406,7 @@ pub trait FuncCaller:
                         let as_var = ContextVarNode::from(node);
                         as_var.maybe_add_fields(analyzer).into_expr_err(loc)?;
                         as_var
-                            .maybe_add_len_inplace(analyzer, ctx, loc)
+                            .maybe_add_len_inplace(analyzer, arena, ctx, loc)
                             .into_expr_err(loc)?;
 
                         ctx.push_expr(ExprRet::Single(node), analyzer)

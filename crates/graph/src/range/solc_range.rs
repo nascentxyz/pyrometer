@@ -109,6 +109,11 @@ impl SolcRange {
         }
     }
 
+    pub fn clear_cache(&mut self) {
+        self.min_cached = None;
+        self.max_cached = None;
+    }
+
     pub fn replace_dep(
         &mut self,
         to_replace: NodeIdx,

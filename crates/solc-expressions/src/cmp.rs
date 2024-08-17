@@ -4,7 +4,7 @@ use graph::{
         BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet,
         TmpConstruction,
     },
-    AnalyzerBackend, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, SolcRange, VarType,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -189,8 +189,10 @@ pub trait Cmp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                         Some(range),
                     ),
                 };
-
-                ctx.push_expr(ExprRet::Single(self.add_node(out_var)), self)
+                let node = ContextVarNode::from(self.add_node(out_var));
+                ctx.add_var(node, self).into_expr_err(loc)?;
+                self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                ctx.push_expr(ExprRet::Single(node.into()), self)
                     .into_expr_err(loc)
             }
             (l @ ExprRet::Single(_lhs), ExprRet::Multi(rhs_sides)) => {

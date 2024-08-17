@@ -111,6 +111,14 @@ impl ContextVarNode {
         }
     }
 
+    pub fn clear_cache(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
+        if let Some(mut range) = self.ty_mut(analyzer)?.take_range() {
+            range.clear_cache();
+            self.set_range(analyzer, range)?;
+        }
+        Ok(())
+    }
+
     pub fn as_range_elem(
         &self,
         analyzer: &impl GraphBackend,
@@ -181,6 +189,18 @@ impl ContextVarNode {
         Ok(())
     }
 
+    pub fn try_set_range_from_elem(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        new_range: Elem<Concrete>,
+    ) -> Result<(), GraphError> {
+        if self.try_set_range_min(analyzer, arena, new_range.clone())? {
+            self.try_set_range_max(analyzer, arena, new_range)?;
+        }
+        Ok(())
+    }
+
     pub fn fallback_range(
         &self,
         analyzer: &mut impl GraphBackend,
@@ -227,6 +247,9 @@ impl ContextVarNode {
 
         tracing::trace!("new min: {new_min}");
         new_min.arenaize(analyzer, arena)?;
+        // if let Some(idx) = arena.idx(&Elem::from(*self)) {
+        //     arena.ranges[idx].uncache();
+        // }
 
         // new_min.cache_flatten(analyzer)?;
         // new_min.cache_minimize(analyzer)?;
@@ -279,6 +302,9 @@ impl ContextVarNode {
         }
 
         new_max.arenaize(analyzer, arena)?;
+        // if let Some(idx) = arena.idx(&Elem::from(*self)) {
+        //     arena.ranges[idx].uncache();
+        // }
 
         tracing::trace!(
             "setting range maximum: {:?}, {}, current: {}, new: {}",
@@ -352,6 +378,9 @@ impl ContextVarNode {
         }
 
         new_min.arenaize(analyzer, arena)?;
+        // if let Some(idx) = arena.idx(&Elem::from(*self)) {
+        //     arena.ranges[idx].uncache();
+        // }
 
         let res = if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -390,6 +419,9 @@ impl ContextVarNode {
         }
 
         new_max.arenaize(analyzer, arena)?;
+        // if let Some(idx) = arena.idx(&Elem::from(*self)) {
+        //     arena.ranges[idx].uncache();
+        // }
 
         let res = if self.is_concrete(analyzer)? {
             let mut new_ty = self.ty(analyzer)?.clone();
@@ -448,9 +480,16 @@ impl ContextVarNode {
         }
     }
 
-    pub fn sol_delete_range(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+    pub fn sol_delete_range(
+        &mut self,
+        analyzer: &mut impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<(), GraphError> {
         let ty = self.ty(analyzer)?;
         if let Some(delete_range) = ty.delete_range_result(analyzer)? {
+            // if let Some(idx) = arena.idx(&Elem::from(*self)) {
+            //     arena.ranges[idx].uncache();
+            // }
             self.set_range(analyzer, delete_range)?;
         }
         Ok(())

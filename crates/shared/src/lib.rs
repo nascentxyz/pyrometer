@@ -15,6 +15,8 @@ pub use search::*;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Ord, PartialOrd, Hash)]
 pub enum StorageLocation {
+    MemoryPtr(solang_parser::pt::Loc),
+    StoragePtr(solang_parser::pt::Loc),
     Memory(solang_parser::pt::Loc),
     Storage(solang_parser::pt::Loc),
     Calldata(solang_parser::pt::Loc),
@@ -25,8 +27,8 @@ pub enum StorageLocation {
 impl std::fmt::Display for StorageLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Memory(_) => write!(f, "memory"),
-            Self::Storage(_) => write!(f, "storage"),
+            Self::Memory(_) | Self::MemoryPtr(_) => write!(f, "memory"),
+            Self::Storage(_) | Self::StoragePtr(_) => write!(f, "storage"),
             Self::Calldata(_) => write!(f, "calldata"),
             Self::Block(_) => write!(f, "block"),
             Self::Msg(_) => write!(f, "msg"),

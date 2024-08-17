@@ -344,6 +344,7 @@ pub enum ContextEdge {
     /// A connection between a variable and a parent variable where the child is some index into the parent
     /// (i.e. `x[1]`)
     IndexAccess,
+    LocationAlias,
     /// A connection between a variable and a parent variable where the child is some field of the parent
     StructAccess,
     /// A connection between a function-as-a-variable and the contract that holds that function
