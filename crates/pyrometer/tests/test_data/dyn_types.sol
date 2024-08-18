@@ -101,20 +101,20 @@ contract DynTypes {
         "pyro::variable::tmp::range::[300,300]";
     }
 
-    // address[] t;
+    address[] t;
 
-    // function inLoop(address holder, address[] memory tokens) public pure {
-    //     address[] memory h = new address[](1);
-    //     h[0] = holder;
-    //     inLoop(h, tokens);
-    // }
+    function inLoop(address holder, address[] memory tokens) public pure {
+        address[] memory h = new address[](1);
+        h[0] = holder;
+        inLoop(h, tokens);
+    }
 
-    // function inLoop(address[] memory holders, address[] memory) public pure {
-    //     for (uint j = 0; j < holders.length; j++) {
-    //         address holder = holders[j];
-    //         holder;
-    //     }
-    // }
+    function inLoop(address[] memory holders, address[] memory) public pure {
+        for (uint j = 0; j < holders.length; j++) {
+            address holder = holders[j];
+            holder;
+        }
+    }
 
     // struct DontUseMoreThanOnce {
     //     uint256 a;

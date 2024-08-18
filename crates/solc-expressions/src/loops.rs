@@ -42,7 +42,10 @@ pub trait Looper:
         let vars = loop_ctx.local_vars(self).clone();
         vars.iter().try_for_each(|(name, var)| {
             // widen to max range
-            if let Some(inheritor_var) = parent_ctx.var_by_name(self, name) {
+            if let Some(inheritor_var) = parent_ctx
+                .var_by_name_or_recurse(self, name)
+                .into_expr_err(loc)?
+            {
                 let inheritor_var =
                     inheritor_var.latest_version_or_inherited_in_ctx(loop_ctx, self);
                 if let Some(r) = var
@@ -52,8 +55,12 @@ pub trait Looper:
                     .default_range(self)
                     .into_expr_err(loc)?
                 {
-                    let new_inheritor_var =
-                        self.advance_var_in_ctx(arena, inheritor_var, loc, ret_ctx)?;
+                    let new_inheritor_var = self.advance_var_in_ctx(
+                        arena,
+                        inheritor_var.latest_version_or_inherited_in_ctx(ret_ctx, self),
+                        loc,
+                        ret_ctx,
+                    )?;
                     new_inheritor_var
                         .set_range_min(self, arena, r.min)
                         .into_expr_err(loc)?;

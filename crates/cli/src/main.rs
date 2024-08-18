@@ -246,6 +246,7 @@ fn main() {
         debug_panic: args.debug_panic || args.minimize_debug.is_some(),
         minimize_debug: args.minimize_debug,
         debug_stack: args.debug_stack,
+        funcs: args.funcs.clone(),
         ..Default::default()
     };
 
@@ -299,6 +300,7 @@ fn main() {
     let t0 = std::time::Instant::now();
     let maybe_entry = analyzer.parse(arena, &sol, &current_path, true);
     let t_end = t0.elapsed();
+    analyzer.interp_stats.nanos = t_end.as_nanos();
     let parse_time = t_end.as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
@@ -324,6 +326,7 @@ fn main() {
     }
 
     if args.stats {
+        println!("{}", analyzer.interp_stats);
         println!("{}", analyzer.stats(t_end, arena));
     }
 

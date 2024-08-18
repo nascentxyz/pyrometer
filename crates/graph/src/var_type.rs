@@ -70,7 +70,7 @@ impl AsDotStr for VarType {
         analyzer: &impl GraphBackend,
         _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> String {
-        self.as_string(analyzer).unwrap()
+        self.as_helpful_string(analyzer).unwrap()
     }
 }
 
@@ -786,6 +786,17 @@ impl VarType {
         }
     }
 
+    pub fn as_helpful_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
+        match self {
+            VarType::User(ty_node, _) => ty_node.as_helpful_string(analyzer),
+            VarType::BuiltIn(bn, _) => match analyzer.node(*bn) {
+                Node::Builtin(bi) => bi.as_string(analyzer),
+                _ => unreachable!(),
+            },
+            VarType::Concrete(c) => c.underlying(analyzer)?.as_builtin().as_string(analyzer),
+        }
+    }
+
     pub fn is_int(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         match self {
             VarType::BuiltIn(bn, _) => Ok(bn.underlying(analyzer)?.is_int()),
@@ -870,6 +881,18 @@ impl From<FunctionNode> for TypeNode {
 
 impl TypeNode {
     pub fn as_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
+        match self {
+            TypeNode::Contract(n) => Ok(n.name(analyzer)?),
+            TypeNode::Struct(n) => Ok(n.name(analyzer)?),
+            TypeNode::Enum(n) => Ok(n.name(analyzer)?),
+            TypeNode::Error(n) => Ok(n.name(analyzer)?),
+            TypeNode::Ty(n) => Ok(n.name(analyzer)?),
+            TypeNode::Func(n) => Ok(n.name(analyzer)?),
+            TypeNode::Unresolved(n) => Ok(format!("UnresolvedType<{:?}>", analyzer.node(*n))),
+        }
+    }
+
+    pub fn as_helpful_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         match self {
             TypeNode::Contract(n) => Ok(format!("{} (Contract)", n.name(analyzer)?)),
             TypeNode::Struct(n) => Ok(format!("{} (Struct)", n.name(analyzer)?)),

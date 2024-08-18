@@ -1,6 +1,9 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
-use crate::{func_call::modifier::ModifierCaller, helper::CallerHelper, ContextBuilder, Flatten};
+use crate::{
+    func_call::apply::FuncApplier, func_call::modifier::ModifierCaller, helper::CallerHelper,
+    ContextBuilder, Flatten,
+};
 
 use graph::{
     elem::Elem,
@@ -158,9 +161,9 @@ pub trait FuncCaller:
             ctx.path(self)
         );
         if !entry_call {
-            // if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
-            //     return Ok(());
-            // }
+            if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
+                return Ok(());
+            }
         }
 
         // pseudocode:

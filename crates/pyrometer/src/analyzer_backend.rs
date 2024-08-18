@@ -592,4 +592,8 @@ impl AnalyzerLike for Analyzer {
         self.contract_id += 1;
         id
     }
+
+    fn interp_stats_mut(&mut self) -> &mut shared::InterpStats {
+        &mut self.interp_stats
+    }
 }

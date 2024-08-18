@@ -2,7 +2,8 @@ use crate::{GraphError, GraphLike, NodeIdx, RangeArena, RepresentationErr};
 
 use ahash::AHashMap;
 
-use std::collections::BTreeMap;
+use solang_parser::pt::Loc;
+use std::{collections::BTreeMap, fmt};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ApplyStats {
@@ -17,6 +18,122 @@ pub struct ApplyStats {
     pub mut_no_children_applies: ApplyStat,
     pub mut_children_no_forks_applies: ApplyStat,
     pub mut_children_forks_applies: ApplyStat,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct InterpStats {
+    pub nanos: u128,
+    pub funcs: BTreeMap<String, FuncStat>,
+}
+
+impl fmt::Display for InterpStats {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "total time: {}", milli_str(self.nanos))?;
+        writeln!(f, "number of functions: {}", self.funcs.len())?;
+        writeln!(f, "functions:")?;
+        let mut funcs = self.funcs.iter().collect::<Vec<_>>();
+        funcs.sort_by(|(_, v), (_, v2)| v2.nanos.cmp(&v.nanos));
+        funcs.iter().try_for_each(|(func_name, func_stat)| {
+            let n = 2;
+            writeln!(
+                f,
+                "{}{} -- {func_name}: {} ctxs, {} exprs",
+                " ".repeat(n),
+                milli_str(func_stat.nanos),
+                func_stat.ctxs.len(),
+                func_stat.ctxs.iter().fold(0, |mut acc, (_, ctx)| {
+                    acc += ctx.exprs_ran;
+                    acc
+                })
+            )
+            // write!(f, "{func_stat}")
+        })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct FuncStat {
+    pub nanos: u128,
+    pub ctxs: BTreeMap<String, CtxStat>,
+}
+
+impl fmt::Display for FuncStat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = 4;
+        writeln!(f, "{}total time: {}", " ".repeat(n), milli_str(self.nanos))?;
+        writeln!(
+            f,
+            "{}number of contexts: {}",
+            " ".repeat(n),
+            self.ctxs.len()
+        )
+        // writeln!(f, "{}contexts:", " ".repeat(n))?;
+        // self.ctxs.iter().try_for_each(|(ctx_key, ctx_stat)| {
+        //     let n = 6;
+        //     writeln!(f, "{}{ctx_key}:", " ".repeat(n))?;
+        //     write!(f, "{ctx_stat}")
+        // })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct CtxStat {
+    pub nanos: u128,
+    pub exprs_ran: usize,
+    pub exprs: BTreeMap<&'static str, ExprStat>,
+}
+
+impl fmt::Display for CtxStat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = 8;
+        writeln!(f, "{}total time: {}", " ".repeat(n), milli_str(self.nanos))?;
+        writeln!(
+            f,
+            "{}number of expressions: {}",
+            " ".repeat(n),
+            self.exprs_ran
+        )
+        // writeln!(f, "{}expressions:", " ".repeat(n))?;
+        // self.exprs.iter().try_for_each(|(expr_key, expr_stat)| {
+        //     let n = 10;
+        //     writeln!(f, "{}{expr_key}:", " ".repeat(n))?;
+        //     write!(f, "{expr_stat}")
+        // })
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ExprStat {
+    pub longest: LocStat,
+    pub total: u128,
+    pub n: usize,
+}
+
+impl fmt::Display for ExprStat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let n = 12;
+        writeln!(f, "{}total time: {}", " ".repeat(n), milli_str(self.total))?;
+        writeln!(f, "{}number of times ran: {}", " ".repeat(n), self.n)?;
+        writeln!(f, "{}longest: {}", " ".repeat(n), self.longest)
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct LocStat {
+    pub loc: Loc,
+    pub nanos: u128,
+}
+
+pub fn milli_str(nanos: u128) -> String {
+    let millis = nanos / 1000000;
+    let rem_nanos = nanos % 1000000;
+    format!("{millis}.{rem_nanos}ms")
+}
+
+impl fmt::Display for LocStat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", milli_str(self.nanos))
+    }
 }
 
 impl ApplyStats {
@@ -213,4 +330,6 @@ pub trait AnalyzerLike: GraphLike {
     fn debug_stack(&self) -> bool;
 
     fn increment_contract_id(&mut self) -> usize;
+
+    fn interp_stats_mut(&mut self) -> &mut InterpStats;
 }

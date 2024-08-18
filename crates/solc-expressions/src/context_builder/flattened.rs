@@ -21,7 +21,7 @@ use graph::{
 };
 use shared::{
     post_to_site, string_to_static, ElseOrDefault, ExprErr, ExprFlag, FlatExpr, FlatYulExpr,
-    GraphError, IfElseChain, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
+    FuncStat, GraphError, IfElseChain, IntoExprErr, LocStat, NodeIdx, RangeArena, USE_DEBUG_SITE,
 };
 
 use alloy_primitives::U256;
@@ -1341,6 +1341,7 @@ pub trait Flatten:
     }
 
     fn interpret_entry_func(&mut self, func: FunctionNode, arena: &mut RangeArena<Elem<Concrete>>) {
+        let t0 = std::time::Instant::now();
         let loc = func
             .body_loc(self)
             .unwrap()
@@ -1376,6 +1377,9 @@ pub trait Flatten:
             false,
         );
         let _ = self.add_if_err(res);
+        let func_name = func.name(self).unwrap();
+        let entry = self.interp_stats_mut().funcs.entry(func_name).or_default();
+        entry.nanos = t0.elapsed().as_nanos();
     }
 
     fn interpret(
@@ -1495,6 +1499,7 @@ pub trait Flatten:
         stack: &mut Vec<FlatExpr>,
     ) -> Result<(), ExprErr> {
         use FlatExpr::*;
+        let t0 = std::time::Instant::now();
 
         if ctx.is_killed(self).unwrap() {
             return Ok(());
@@ -1525,7 +1530,7 @@ pub trait Flatten:
             );
         }
 
-        match next {
+        let res = match next {
             Todo(loc, err_str) => Err(ExprErr::Todo(loc, err_str.to_string())),
             // Flag expressions
             FunctionCallName {
@@ -1800,7 +1805,10 @@ pub trait Flatten:
                 }
                 Ok(())
             }
-        }?;
+        };
+
+        self.handle_expr_stats(ctx, next, t0);
+        res?;
 
         if let Some(loc) = next.try_loc() {
             if ctx.kill_if_ret_killed(self, loc).into_expr_err(loc)? {
@@ -1808,6 +1816,23 @@ pub trait Flatten:
             }
         }
         Ok(())
+    }
+
+    fn handle_expr_stats(&mut self, ctx: ContextNode, next: FlatExpr, t0: std::time::Instant) {
+        let elapsed = t0.elapsed().as_nanos();
+        let func_name = ctx.genesis(self).unwrap().associated_fn_name(self).unwrap();
+        let ctx_path = ctx.path(self);
+        let func_entry = self.interp_stats_mut().funcs.entry(func_name).or_default();
+        let ctx_entry = func_entry.ctxs.entry(ctx_path).or_default();
+        ctx_entry.nanos += elapsed;
+        ctx_entry.exprs_ran += 1;
+        let expr_entry = ctx_entry.exprs.entry(next.key()).or_default();
+        if expr_entry.longest.nanos < elapsed {
+            expr_entry.longest.nanos = elapsed;
+            expr_entry.longest.loc = next.try_loc().unwrap_or(Loc::Implicit);
+        }
+        expr_entry.total += elapsed;
+        expr_entry.n += 1;
     }
 
     fn interp_delete(
@@ -3308,28 +3333,20 @@ pub trait Flatten:
         loc: Loc,
         closure: &impl Fn(&mut Self, ContextNode) -> Result<(), GraphError>,
     ) -> Result<(), ExprErr> {
-        let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
-        if !ctx.killed_or_ret(self).into_expr_err(loc)? {
-            if ctx.underlying(self).into_expr_err(loc)?.child.is_some() {
-                if live_edges.is_empty() {
-                    Ok(())
-                } else {
-                    live_edges
-                        .iter()
-                        .try_for_each(|ctx| closure(self, *ctx))
-                        .into_expr_err(loc)
+        if let Some(child) = ctx.underlying(self).into_expr_err(loc)?.child {
+            match child {
+                CallFork::Call(call) => {
+                    self.modify_edges(call, loc, closure)?;
                 }
-            } else if live_edges.is_empty() {
-                closure(self, ctx).into_expr_err(loc)
-            } else {
-                live_edges
-                    .iter()
-                    .try_for_each(|ctx| closure(self, *ctx))
-                    .into_expr_err(loc)
+                CallFork::Fork(w1, w2) => {
+                    self.modify_edges(w1, loc, closure)?;
+                    self.modify_edges(w2, loc, closure)?;
+                }
             }
-        } else {
-            Ok(())
+        } else if !ctx.is_ended(self).into_expr_err(loc)? {
+            closure(self, ctx).into_expr_err(loc)?;
         }
+        Ok(())
     }
 
     /// Apply an expression or statement to all *live* edges of a context. This is used everywhere

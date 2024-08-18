@@ -4,7 +4,7 @@ use graph::elem::Elem;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shared::{AnalyzerLike, ApplyStats, GraphLike, NodeIdx, Search};
+use shared::{AnalyzerLike, ApplyStats, GraphLike, InterpStats, NodeIdx, Search};
 use shared::{ExprErr, ExprFlag, FlatExpr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
 use solc_expressions::Flatten;
 use tokio::runtime::Runtime;
@@ -102,6 +102,8 @@ pub struct Analyzer {
     /// Since we use a staged approach to analysis, we analyze all user types first then go through and patch up any missing or unresolved
     /// parts of a contract (i.e. we parsed a struct which is used as an input to a function signature, we have to know about the struct)
     pub final_pass_items: Vec<FinalPassItem>,
+    /// Functions to process
+    pub funcs: Vec<String>,
     /// The next file number to use when parsing a new file
     pub file_no: usize,
     /// The index of the current `msg` node
@@ -142,6 +144,7 @@ pub struct Analyzer {
     pub fn_calls_fns: BTreeMap<FunctionNode, Vec<FunctionNode>>,
 
     pub apply_stats: ApplyStats,
+    pub interp_stats: InterpStats,
     /// An arena of ranges
     pub range_arena: RangeArena<Elem<Concrete>>,
     /// Parsed functions
@@ -183,6 +186,7 @@ impl Default for Analyzer {
             debug_panic: false,
             fn_calls_fns: Default::default(),
             apply_stats: ApplyStats::default(),
+            interp_stats: InterpStats::default(),
             range_arena: RangeArena {
                 ranges: vec![Elem::Null],
                 map: {
@@ -198,6 +202,7 @@ impl Default for Analyzer {
             current_asm_block: 0,
             debug_stack: false,
             contract_id: 0,
+            funcs: Default::default(),
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
@@ -599,6 +604,7 @@ impl Analyzer {
             final_pass_item.funcs.into_iter().for_each(|func| {
                 if !self.handled_funcs.contains(&func)
                     && func.underlying(self).unwrap().body.is_some()
+                    && (self.funcs.is_empty() || self.funcs.contains(&func.name(self).unwrap()))
                 {
                     self.interpret_entry_func(func, arena);
                 }
