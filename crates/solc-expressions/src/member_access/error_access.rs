@@ -1,7 +1,7 @@
 use crate::LibraryAccess;
 
 use graph::{
-    nodes::{ContextVar, ContextVarNode, ErrorNode, ExprRet, Fielded},
+    nodes::{ContextNode, ContextVar, ContextVarNode, ErrorNode, ExprRet, Fielded},
     AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, IntoExprErr};

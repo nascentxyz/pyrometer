@@ -161,7 +161,7 @@ pub trait FuncCaller:
             ctx.path(self)
         );
         if !entry_call {
-            if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
+            if let Ok(true) = self.apply(arena, ctx, loc, func_node, inputs, &mut vec![]) {
                 return Ok(());
             }
         }

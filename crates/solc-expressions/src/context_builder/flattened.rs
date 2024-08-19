@@ -1340,6 +1340,7 @@ pub trait Flatten:
         }
     }
 
+    #[inline(never)]
     fn interpret_entry_func(&mut self, func: FunctionNode, arena: &mut RangeArena<Elem<Concrete>>) {
         let t0 = std::time::Instant::now();
         let loc = func

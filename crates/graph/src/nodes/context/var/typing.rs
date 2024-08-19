@@ -86,14 +86,14 @@ impl ContextVarNode {
     pub fn is_storage(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(
             self.underlying(analyzer)?.storage,
-            Some(StorageLocation::Storage(..))
+            Some(StorageLocation::Storage(..)) | Some(StorageLocation::StoragePtr(..))
         ) || self.is_attr_or_index_of_storage(analyzer))
     }
 
     pub fn is_memory(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(
             self.underlying(analyzer)?.storage,
-            Some(StorageLocation::Memory(..))
+            Some(StorageLocation::Memory(..)) | Some(StorageLocation::MemoryPtr(..))
         ))
     }
 
