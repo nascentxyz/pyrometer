@@ -208,14 +208,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
         let new_rhs = rhs_cvar.latest_version_or_inherited_in_ctx(ctx, self);
 
-        println!(
-            "core: {}",
-            lhs_cvar
-                .latest_version_or_inherited_in_ctx(ctx, self)
-                .simplified_range_string(self, arena)
-                .unwrap()
-                .unwrap()
-        );
         let expr = Elem::Expr(RangeExpr::<Concrete>::new(
             Elem::from(Reference::new(
                 lhs_cvar
@@ -233,7 +225,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         let mut e = expr.clone();
         e.arenaize(self, arena).unwrap();
 
-        println!("expr: {}", e.simplify_minimize(self, arena).unwrap());
         let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
         new_lhs
             .set_range_min(self, arena, expr.clone())
@@ -241,16 +232,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         new_lhs
             .set_range_max(self, arena, expr)
             .into_expr_err(loc)?;
-
-        println!("____-----____");
-        println!(
-            "new_lhs: {}",
-            new_lhs
-                .simplified_range_string(self, arena)
-                .unwrap()
-                .unwrap()
-        );
-        println!("____-----____");
         // to prevent some recursive referencing, forcibly increase lhs_cvar
         self.advance_var_in_ctx_forcible(
             arena,
@@ -514,13 +495,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     ) -> Result<Option<ExprRet>, ExprErr> {
         // lhs + rhs <= type(lhs).max
         let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
-        println!(
-            "new simp: {}",
-            new_lhs
-                .simplified_range_string(self, arena)
-                .unwrap()
-                .unwrap()
-        );
         let tmp_lhs = self.advance_var_in_ctx_forcible(arena, new_lhs, loc, ctx, true)?;
 
         // get type(lhs).max

@@ -377,7 +377,6 @@ impl ContextNode {
             stack.push_back(right_subctx);
         }
 
-        println!("created {n} apply forks");
         self.all_edges(analyzer)
     }
 
