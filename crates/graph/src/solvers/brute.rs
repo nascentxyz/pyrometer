@@ -389,13 +389,15 @@ impl SolcSolver for BruteBinSearchSolver {
         if atomic_solves.len() == self.atomics.len() {
             return Ok(AtomicSolveStatus::Sat(atomic_solves));
         } else {
-            atomic_solves.iter().for_each(|(atomic, val)| {
-                self.intermediate_ranges.iter_mut().for_each(|(_dep, r)| {
-                    atomic.idxs.iter().for_each(|idx| {
-                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
-                    });
-                });
-            });
+            atomic_solves.iter().try_for_each(|(atomic, val)| {
+                self.intermediate_ranges
+                    .iter_mut()
+                    .try_for_each(|(_dep, r)| {
+                        atomic.idxs.iter().try_for_each(|idx| {
+                            r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
+                        })
+                    })
+            })?;
 
             atomic_solves.clone().into_iter().for_each(|(atomic, val)| {
                 self.intermediate_atomic_ranges.insert(
@@ -730,13 +732,15 @@ impl SolcSolver for BruteBinSearchSolver {
                 }
             }
 
-            atomic_solves.iter().for_each(|(atomic, val)| {
-                this.intermediate_ranges.iter_mut().for_each(|(_dep, r)| {
-                    atomic.idxs.iter().for_each(|idx| {
-                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
-                    });
-                });
-            });
+            atomic_solves.iter().try_for_each(|(atomic, val)| {
+                this.intermediate_ranges
+                    .iter_mut()
+                    .try_for_each(|(_dep, r)| {
+                        atomic.idxs.iter().try_for_each(|idx| {
+                            r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
+                        })
+                    })
+            })?;
 
             atomic_solves.clone().into_iter().for_each(|(atomic, val)| {
                 this.intermediate_atomic_ranges.insert(

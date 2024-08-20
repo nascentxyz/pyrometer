@@ -120,21 +120,24 @@ impl SolcRange {
         replacement: Elem<Concrete>,
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
-    ) {
+    ) -> Result<(), GraphError> {
+        let replacement_min = replacement.simplify_minimize(analyzer, arena)?;
+        let replacement_max = replacement.simplify_maximize(analyzer, arena)?;
         if let Some(ref mut flattened) = &mut self.flattened {
             flattened
                 .min
-                .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+                .replace_dep(to_replace, replacement_min.clone(), analyzer, arena);
             flattened
                 .max
-                .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+                .replace_dep(to_replace, replacement_max.clone(), analyzer, arena);
         }
         self.min
-            .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+            .replace_dep(to_replace, replacement_min, analyzer, arena);
         self.max
-            .replace_dep(to_replace, replacement, analyzer, arena);
+            .replace_dep(to_replace, replacement_max, analyzer, arena);
         self.min_cached = None;
         self.max_cached = None;
+        Ok(())
     }
 
     pub fn is_const(
@@ -546,11 +549,17 @@ impl SolcRange {
         }
 
         let mut min = self.min.clone();
+
         min.arenaize(analyzer, arena)?;
         min.cache_flatten(analyzer, arena)?;
         let mut max = self.max.clone();
+        println!("max: {:#?}", max.recurse_dearenaize(analyzer, arena));
         max.arenaize(analyzer, arena)?;
         max.cache_flatten(analyzer, arena)?;
+        println!(
+            "post flatten max: {:#?}",
+            max.recurse_dearenaize(analyzer, arena)
+        );
 
         self.min = min.clone();
         self.max = max.clone();
@@ -743,8 +752,10 @@ impl Range<Concrete> for SolcRange {
     {
         let taken = std::mem::take(&mut self.flattened);
         if let Some(flat) = taken {
+            println!("HAD FLATTENED");
             Ok(flat)
         } else {
+            println!("CALCULATING FLATTENED");
             self.cache_flatten(analyzer, arena)?;
             self.take_flattened_range(analyzer, arena)
         }

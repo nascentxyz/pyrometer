@@ -644,6 +644,7 @@ impl Elem<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
         if let Some(idx) = arena.idx(self) {
+            println!("setting arena flat maximize: arena_idx_{idx}");
             if let Some(ref mut t) = arena.ranges.get_mut(idx) {
                 match &mut *t {
                     Elem::Expr(ref mut arenaized) => {

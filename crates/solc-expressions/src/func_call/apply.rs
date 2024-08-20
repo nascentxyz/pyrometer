@@ -2,6 +2,7 @@ use crate::helper::CallerHelper;
 use crate::member_access::ListAccess;
 use crate::variable::Variable;
 use crate::Flatten;
+use graph::elem::RangeArenaLike;
 use graph::nodes::CallFork;
 use graph::{AsDotStr, RangeEval};
 
@@ -151,18 +152,30 @@ impl ApplyContexts {
     ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, GraphError> {
         let mut mapping: BTreeMap<_, _> = Default::default();
         let basic_map = self.basic_params(analyzer)?;
-        basic_map.iter().for_each(|(i, params)| {
+        basic_map.iter().try_for_each(|(i, params)| {
             let input = inputs[*i].latest_version(analyzer);
             if params.len() == 1 {
-                mapping.insert(params[0].0.into(), (Elem::from(input), input));
+                let elem = Elem::from(input);
+                mapping.insert(params[0].0.into(), (elem, input));
             } else {
                 let mut param_iter = params.iter();
-                mapping.insert(
-                    param_iter.next().unwrap().0.into(),
-                    (Elem::from(input), input),
-                );
+                let elem = Elem::from(input);
+                mapping.insert(param_iter.next().unwrap().0.into(), (elem, input));
+                for param_field in param_iter {
+                    let maybe_input_field = input.find_field(
+                        analyzer,
+                        &param_field
+                            .maybe_field_name(analyzer)
+                            .unwrap()
+                            .expect("expected this to be field name"),
+                    )?;
+                    let input_field = maybe_input_field.expect("expected to have matching field");
+                    let elem = Elem::from(input_field);
+                    mapping.insert(param_field.0.into(), (elem, input_field));
+                }
             }
-        });
+            Ok(())
+        })?;
         match func_mut {
             FuncVis::Pure => {
                 // nothing else to do
@@ -180,7 +193,8 @@ impl ApplyContexts {
     pub fn generate_basic_return_vars(
         &self,
         analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<Vec<ContextVarNode>, GraphError> {
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Vec<(ContextVarNode, bool)>, GraphError> {
         Ok(self
             .result_func_ctx
             .return_nodes(analyzer)?
@@ -200,6 +214,25 @@ impl ApplyContexts {
                 );
                 new_var.name.clone_from(&new_name);
                 new_var.display_name = new_name.clone();
+                // if let Some(mut range) = new_var.ty.take_range() {
+                //     // println!(
+                //     //     "pre-ret range: [{}, {}]",
+                //     //     range
+                //     //         .min
+                //     //         .recurse_dearenaize(analyzer, arena)
+                //     //         .simplify_minimize(analyzer, arena)
+                //     //         .unwrap(),
+                //     //     range
+                //     //         .max
+                //     //         .recurse_dearenaize(analyzer, arena)
+                //     //         .simplify_maximize(analyzer, arena)
+                //     //         .unwrap()
+                //     // );
+                //     range.min = range.min.simplify_minimize(analyzer, arena).unwrap();
+                //     range.max = range.max.simplify_maximize(analyzer, arena).unwrap();
+                //     // println!("post-ret range: [{}, {}]", range.min, range.max);
+                //     new_var.ty.set_range(range);
+                // }
                 let new_cvar = ContextVarNode::from(analyzer.add_node(new_var));
                 analyzer.add_edge(
                     new_cvar,
@@ -208,27 +241,33 @@ impl ApplyContexts {
                 );
                 self.target_ctx.add_var(new_cvar, analyzer).unwrap();
                 if let Ok(fields) = ret.var().fielded_to_fields(analyzer) {
-                    let mut vars = fields
-                        .iter()
-                        .map(|field| {
-                            let mut new_field_var = field.underlying(analyzer).unwrap().clone();
-                            let new_name =
-                                format!("{func_name}.{i}.{}", field.name(analyzer).unwrap());
-                            new_field_var.name.clone_from(&new_name);
-                            new_field_var.display_name = new_name;
-                            let new_field = ContextVarNode::from(analyzer.add_node(new_field_var));
-                            analyzer.add_edge(
-                                new_field,
-                                new_cvar,
-                                Edge::Context(ContextEdge::AttrAccess("field")),
-                            );
-                            new_field
-                        })
-                        .collect::<Vec<_>>();
-                    vars.push(new_cvar);
-                    vars
+                    if fields.len() > 0 {
+                        // println!("had field");
+                        let mut vars = fields
+                            .iter()
+                            .map(|field| {
+                                let mut new_field_var = field.underlying(analyzer).unwrap().clone();
+                                let new_name =
+                                    format!("{func_name}.{i}.{}", field.name(analyzer).unwrap());
+                                new_field_var.name.clone_from(&new_name);
+                                new_field_var.display_name = new_name;
+                                let new_field =
+                                    ContextVarNode::from(analyzer.add_node(new_field_var));
+                                analyzer.add_edge(
+                                    new_field,
+                                    new_cvar,
+                                    Edge::Context(ContextEdge::AttrAccess("field")),
+                                );
+                                (new_field, false)
+                            })
+                            .collect::<Vec<_>>();
+                        vars.push((new_cvar, true));
+                        vars
+                    } else {
+                        vec![(new_cvar, true)]
+                    }
                 } else {
-                    vec![new_cvar]
+                    vec![(new_cvar, true)]
                 }
             })
             .collect::<Vec<_>>())
@@ -245,12 +284,49 @@ impl ApplyContexts {
         tracing::trace!("handling apply range update: {new_name}");
 
         // update the vars range
+        // if let Some(idx) = arena.idx(&Elem::from(var)) {
+        //     println!(
+        //         "{}",
+        //         arena.ranges[idx]
+        //             .clone()
+        //             .simplify_minimize(analyzer, arena)
+        //             .unwrap()
+        //     );
+        // }
         if let Some(mut range) = var.ty_mut(analyzer)?.take_range() {
+            println!(
+                "pre range {}: [{}, {}], [{:#?}, {:#?}]",
+                var.name(analyzer).unwrap(),
+                range.min,
+                range.max,
+                range.min.recurse_dearenaize(analyzer, arena),
+                range.max.recurse_dearenaize(analyzer, arena),
+            );
             let mut range: SolcRange = range.take_flattened_range(analyzer, arena).unwrap().into();
+            println!(
+                "flattened range {}: [{}, {}], [{:#?}, {:#?}]",
+                var.name(analyzer).unwrap(),
+                range.min,
+                range.max,
+                range.min.recurse_dearenaize(analyzer, arena),
+                range.max.recurse_dearenaize(analyzer, arena),
+            );
             // use the replacement map
-            replacement_map.iter().for_each(|(replace, replacement)| {
-                range.replace_dep(*replace, replacement.0.clone(), analyzer, arena);
-            });
+            replacement_map
+                .iter()
+                .try_for_each(|(replace, replacement)| {
+                    println!("replace: {replace:?}, replacement: {}", replacement.0);
+                    range.replace_dep(*replace, replacement.0.clone(), analyzer, arena)
+                })?;
+
+            println!(
+                "post range {}: [{}, {}], [{:#?}, {:#?}]",
+                var.name(analyzer).unwrap(),
+                range.min,
+                range.max,
+                range.min.recurse_dearenaize(analyzer, arena),
+                range.max.recurse_dearenaize(analyzer, arena),
+            );
             range.cache_eval(analyzer, arena).unwrap();
             var.set_range(analyzer, range).unwrap();
         }
@@ -302,10 +378,10 @@ impl ApplyContexts {
         map: &BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>,
         func_mut: FuncVis,
     ) -> Result<ExprRet, GraphError> {
-        let ret_vars = self.generate_basic_return_vars(analyzer)?;
+        let ret_vars = self.generate_basic_return_vars(analyzer, arena)?;
         ret_vars
             .iter()
-            .try_for_each(|ret_var| self.update_var(analyzer, arena, map, *ret_var))?;
+            .try_for_each(|(ret_var, _)| self.update_var(analyzer, arena, map, *ret_var))?;
         // TODO: handle unsat
         let _ = self.add_deps(analyzer, arena, map)?;
 
@@ -315,8 +391,8 @@ impl ApplyContexts {
                 Ok(ExprRet::Multi(
                     ret_vars
                         .into_iter()
-                        .filter_map(|var| {
-                            if !var.is_field(analyzer) {
+                        .filter_map(|(var, real_ret)| {
+                            if real_ret {
                                 Some(ExprRet::from(var))
                             } else {
                                 None
@@ -351,17 +427,17 @@ impl ApplyContexts {
                 .associated_fn(analyzer)?
                 .visibility(analyzer)?;
             let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
-            println!(
-                "replacement map: {:#?}",
-                map.iter()
-                    .map(|(k, (_, v))| {
-                        (
-                            ExprRet::Single(*k).debug_str_ranged(analyzer, arena),
-                            ExprRet::from(*v).debug_str_ranged(analyzer, arena),
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            );
+            // println!(
+            //     "replacement map: {:#?}",
+            //     map.iter()
+            //         .map(|(k, (_, v))| {
+            //             (
+            //                 ExprRet::Single(*k).debug_str_ranged(analyzer, arena),
+            //                 ExprRet::from(*v).debug_str_ranged(analyzer, arena),
+            //             )
+            //         })
+            //         .collect::<Vec<_>>()
+            // );
             let res = self.apply_replacement_map(analyzer, arena, &map, func_mut)?;
             self.target_ctx.push_expr(res, analyzer)?;
             Ok(true)

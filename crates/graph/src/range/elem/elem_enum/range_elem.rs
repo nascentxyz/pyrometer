@@ -125,8 +125,10 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
         if self.is_flatten_cached(analyzer, arena) {
+            println!("WAS FLATTEN CACHED: {self}");
             return Ok(());
         }
+        println!("WAS NOT FLATTEN CACHED: {self}");
 
         match self {
             Self::Reference(d) => d.cache_flatten(analyzer, arena),
@@ -389,6 +391,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         use Elem::*;
 
         if let Some(idx) = arena.idx(self) {
+            println!("simplify maximize: arena_idx_{idx}");
             if let Some(t) = arena.ranges.get(idx) {
                 match t {
                     Reference(dy) => {
@@ -404,6 +407,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                     }
                     Expr(expr) => {
                         if let Some(max) = &expr.flattened_max {
+                            println!("cached simplify maximize: {t}");
                             return Ok(*max.clone());
                         }
                     }
@@ -412,6 +416,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
             }
         }
 
+        println!("running simplify maximize: {self}");
         match self {
             Reference(dy) => dy.simplify_maximize(analyzer, arena),
             Concrete(inner) => inner.simplify_maximize(analyzer, arena),
@@ -553,14 +558,14 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 MaybeCollapsed::Collapsed(mut collapsed) => {
                     collapsed.cache_maximize(analyzer, arena)?;
                     let max = collapsed.maximize(analyzer, arena)?;
-                    self.set_arenaized_flattened(true, &max, arena);
+                    self.set_arenaized_cache(true, &max, arena);
                     *self = collapsed;
                     Ok(())
                 }
                 _ => {
                     expr.cache_maximize(analyzer, arena)?;
                     let max = expr.maximize(analyzer, arena)?;
-                    self.set_arenaized_flattened(true, &max, arena);
+                    self.set_arenaized_cache(true, &max, arena);
                     Ok(())
                 }
             },
@@ -588,14 +593,14 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                 MaybeCollapsed::Collapsed(mut collapsed) => {
                     collapsed.cache_minimize(analyzer, arena)?;
                     let min = collapsed.minimize(analyzer, arena)?;
-                    self.set_arenaized_flattened(false, &min, arena);
+                    self.set_arenaized_cache(false, &min, arena);
                     *self = collapsed;
                     Ok(())
                 }
                 _ => {
                     expr.cache_minimize(analyzer, arena)?;
                     let min = expr.minimize(analyzer, arena)?;
-                    self.set_arenaized_flattened(false, &min, arena);
+                    self.set_arenaized_cache(false, &min, arena);
                     Ok(())
                 }
             },
