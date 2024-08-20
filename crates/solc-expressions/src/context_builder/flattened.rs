@@ -21,7 +21,7 @@ use graph::{
 };
 use shared::{
     post_to_site, string_to_static, ElseOrDefault, ExprErr, ExprFlag, FlatExpr, FlatYulExpr,
-    FuncStat, GraphError, IfElseChain, IntoExprErr, LocStat, NodeIdx, RangeArena, USE_DEBUG_SITE,
+    GraphError, IfElseChain, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
 };
 
 use alloy_primitives::U256;
@@ -1863,7 +1863,7 @@ pub trait Flatten:
                 let mut new_var = self
                     .advance_var_in_ctx(arena, cvar.into(), loc, ctx)
                     .unwrap();
-                new_var.sol_delete_range(self, arena).into_expr_err(loc)
+                new_var.sol_delete_range(self).into_expr_err(loc)
             }
             ExprRet::Multi(inner) => inner
                 .into_iter()

@@ -181,13 +181,13 @@ pub trait ReportDisplay {
     ) -> Vec<Report<LocStrSpan>>;
     fn print_reports(
         &self,
-        src: &mut impl Cache<String>,
+        src: impl Cache<String>,
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     );
     fn eprint_reports(
         &self,
-        src: &mut impl Cache<String>,
+        src: impl Cache<String>,
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     );

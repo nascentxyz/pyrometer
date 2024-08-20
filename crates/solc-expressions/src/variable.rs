@@ -1,7 +1,7 @@
 use crate::{assign::Assign, env::Env, ContextBuilder};
 
 use graph::{
-    elem::{Elem, RangeElem},
+    elem::Elem,
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
@@ -580,7 +580,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         // get the old context
         let new_cvarnode;
 
-        let mut created_new = true;
         'a: {
             if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
                 if !force {
@@ -598,7 +597,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         if prev_version.eq_ignore_loc(curr_version) && old_ctx == ctx {
                             // there was no change in the current context, just give them the current variable
                             new_cvarnode = cvar_node.into();
-                            created_new = false;
                             break 'a;
                         }
                     }
@@ -698,8 +696,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
         let nmin = ContextVarNode::from(new_cvarnode).evaled_range_min(self, arena);
         let nmax = ContextVarNode::from(new_cvarnode).evaled_range_max(self, arena);
-        let omin = ContextVarNode::from(cvar_node).evaled_range_min(self, arena);
-        let omax = ContextVarNode::from(cvar_node).evaled_range_max(self, arena);
+        let omin = cvar_node.evaled_range_min(self, arena);
+        let omax = cvar_node.evaled_range_max(self, arena);
         debug_assert!(nmin == omin);
         debug_assert!(nmax == omax);
 

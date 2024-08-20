@@ -480,16 +480,9 @@ impl ContextVarNode {
         }
     }
 
-    pub fn sol_delete_range(
-        &mut self,
-        analyzer: &mut impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
-    ) -> Result<(), GraphError> {
+    pub fn sol_delete_range(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         let ty = self.ty(analyzer)?;
         if let Some(delete_range) = ty.delete_range_result(analyzer)? {
-            // if let Some(idx) = arena.idx(&Elem::from(*self)) {
-            //     arena.ranges[idx].uncache();
-            // }
             self.set_range(analyzer, delete_range)?;
         }
         Ok(())

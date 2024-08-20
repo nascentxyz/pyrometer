@@ -435,18 +435,22 @@ impl SolcSolver for BruteBinSearchSolver {
             if mapping.len() == self.intermediate_atomic_ranges.len() {
                 let all_good = self.ranges.iter().all(|(_dep, range)| {
                     let mut new_range = range.clone();
-                    self.intermediate_atomic_ranges
-                        .iter()
-                        .for_each(|(atomic, range)| {
-                            atomic.idxs.iter().for_each(|idx| {
-                                new_range.replace_dep(
-                                    idx.0.into(),
-                                    range.min.clone(),
-                                    analyzer,
-                                    arena,
-                                );
+                    let res =
+                        self.intermediate_atomic_ranges
+                            .iter()
+                            .try_for_each(|(atomic, range)| {
+                                atomic.idxs.iter().try_for_each(|idx| {
+                                    new_range.replace_dep(
+                                        idx.0.into(),
+                                        range.min.clone(),
+                                        analyzer,
+                                        arena,
+                                    )
+                                })
                             });
-                        });
+                    if res.is_err() {
+                        return false;
+                    }
                     new_range.cache_eval(analyzer, arena).unwrap();
                     new_range.sat(analyzer, arena)
                 });
@@ -780,9 +784,9 @@ impl SolcSolver for BruteBinSearchSolver {
                 this.atomics[solved_for_idx]
                     .idxs
                     .iter()
-                    .for_each(|atomic_alias| {
-                        new_range.replace_dep(atomic_alias.0.into(), conc.clone(), analyzer, arena);
-                    });
+                    .try_for_each(|atomic_alias| {
+                        new_range.replace_dep(atomic_alias.0.into(), conc.clone(), analyzer, arena)
+                    })?;
                 new_range.cache_eval(analyzer, arena)?;
 
                 if new_range.unsat(analyzer, arena) {

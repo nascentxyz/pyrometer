@@ -84,7 +84,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
 
     fn print_reports(
         &self,
-        mut src: &mut impl Cache<String>,
+        mut src: impl Cache<String>,
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
@@ -96,7 +96,7 @@ impl<'a> ReportDisplay for CLIFunctionVarsBoundAnalysis<'a> {
 
     fn eprint_reports(
         &self,
-        mut src: &mut impl Cache<String>,
+        mut src: impl Cache<String>,
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
