@@ -3,7 +3,7 @@ use crate::member_access::ListAccess;
 use crate::variable::Variable;
 use crate::Flatten;
 use graph::nodes::CallFork;
-use graph::AsDotStr;
+use graph::{AsDotStr, RangeEval};
 
 use graph::{
     elem::{Elem, RangeElem, RangeExpr, RangeOp},
@@ -50,46 +50,13 @@ pub struct ApplyContexts {
 }
 
 impl ApplyContexts {
-    pub fn generate_replacement_map(
-        &self,
-        analyzer: &mut impl AnalyzerBackend,
-        inputs: &[ContextVarNode],
-        func_mut: FuncVis,
-    ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, GraphError> {
-        let mut mapping: BTreeMap<_, _> = Default::default();
-        match func_mut {
-            FuncVis::Pure => {
-                let basic_map = self.basic_params(analyzer)?;
-                basic_map.iter().for_each(|(i, params)| {
-                    let input = inputs[*i];
-                    if params.len() == 1 {
-                        mapping.insert(params[0].0.into(), (Elem::from(input), input));
-                    } else {
-                        let mut param_iter = params.iter();
-                        mapping.insert(
-                            param_iter.next().unwrap().0.into(),
-                            (Elem::from(input), input),
-                        );
-                    }
-                });
-            }
-            FuncVis::View => {
-                todo!()
-            }
-            FuncVis::Mut => {
-                todo!()
-            }
-        }
-        Ok(mapping)
-    }
-
     pub fn storage_inputs(
         &self,
         analyzer: &mut impl AnalyzerBackend,
-    ) -> BTreeMap<ContractNode, BTreeSet<ContextVarNode>> {
+    ) -> Result<BTreeMap<ContractNode, BTreeSet<ContextVarNode>>, GraphError> {
         let mut accumulated_vars = Default::default();
-        self.recursive_storage_inputs(analyzer, self.target_ctx, &mut accumulated_vars);
-        accumulated_vars
+        self.recursive_storage_inputs(analyzer, self.target_ctx, &mut accumulated_vars)?;
+        Ok(accumulated_vars)
     }
 
     /// Walk up the context tree accumulating all accessed storage variables
@@ -143,10 +110,10 @@ impl ApplyContexts {
     pub fn storage_params(
         &self,
         analyzer: &mut impl AnalyzerBackend,
-    ) -> BTreeMap<ContractNode, BTreeSet<ContextVarNode>> {
+    ) -> Result<BTreeMap<ContractNode, BTreeSet<ContextVarNode>>, GraphError> {
         let mut accumulated_vars = Default::default();
-        self.recursive_storage_params(analyzer, self.genesis_func_ctx, &mut accumulated_vars);
-        accumulated_vars
+        self.recursive_storage_params(analyzer, self.genesis_func_ctx, &mut accumulated_vars)?;
+        Ok(accumulated_vars)
     }
 
     fn recursive_storage_params(
@@ -176,24 +143,228 @@ impl ApplyContexts {
         Ok(())
     }
 
+    pub fn generate_replacement_map(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        inputs: &[ContextVarNode],
+        func_mut: FuncVis,
+    ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, GraphError> {
+        let mut mapping: BTreeMap<_, _> = Default::default();
+        let basic_map = self.basic_params(analyzer)?;
+        basic_map.iter().for_each(|(i, params)| {
+            let input = inputs[*i].latest_version(analyzer);
+            if params.len() == 1 {
+                mapping.insert(params[0].0.into(), (Elem::from(input), input));
+            } else {
+                let mut param_iter = params.iter();
+                mapping.insert(
+                    param_iter.next().unwrap().0.into(),
+                    (Elem::from(input), input),
+                );
+            }
+        });
+        match func_mut {
+            FuncVis::Pure => {
+                // nothing else to do
+            }
+            FuncVis::View => {
+                todo!()
+            }
+            FuncVis::Mut => {
+                todo!()
+            }
+        }
+        Ok(mapping)
+    }
+
+    pub fn generate_basic_return_vars(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<Vec<ContextVarNode>, GraphError> {
+        Ok(self
+            .result_func_ctx
+            .return_nodes(analyzer)?
+            .iter()
+            .enumerate()
+            .flat_map(|(i, ret)| {
+                let func_name = self
+                    .genesis_func_ctx
+                    .associated_fn(analyzer)
+                    .unwrap()
+                    .loc_specified_name(analyzer)
+                    .unwrap();
+                let mut new_var = ret.var().underlying(analyzer).unwrap().clone();
+                let new_name = format!(
+                    "tmp_{}({func_name}.{i})",
+                    self.target_ctx.new_tmp(analyzer).unwrap(),
+                );
+                new_var.name.clone_from(&new_name);
+                new_var.display_name = new_name.clone();
+                let new_cvar = ContextVarNode::from(analyzer.add_node(new_var));
+                analyzer.add_edge(
+                    new_cvar,
+                    self.target_ctx,
+                    Edge::Context(ContextEdge::Variable),
+                );
+                self.target_ctx.add_var(new_cvar, analyzer).unwrap();
+                if let Ok(fields) = ret.var().fielded_to_fields(analyzer) {
+                    let mut vars = fields
+                        .iter()
+                        .map(|field| {
+                            let mut new_field_var = field.underlying(analyzer).unwrap().clone();
+                            let new_name =
+                                format!("{func_name}.{i}.{}", field.name(analyzer).unwrap());
+                            new_field_var.name.clone_from(&new_name);
+                            new_field_var.display_name = new_name;
+                            let new_field = ContextVarNode::from(analyzer.add_node(new_field_var));
+                            analyzer.add_edge(
+                                new_field,
+                                new_cvar,
+                                Edge::Context(ContextEdge::AttrAccess("field")),
+                            );
+                            new_field
+                        })
+                        .collect::<Vec<_>>();
+                    vars.push(new_cvar);
+                    vars
+                } else {
+                    vec![new_cvar]
+                }
+            })
+            .collect::<Vec<_>>())
+    }
+
+    pub fn update_var(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        replacement_map: &BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>,
+        var: ContextVarNode,
+    ) -> Result<(), GraphError> {
+        let new_name = var.display_name(analyzer).unwrap();
+        tracing::trace!("handling apply range update: {new_name}");
+
+        // update the vars range
+        if let Some(mut range) = var.ty_mut(analyzer)?.take_range() {
+            let mut range: SolcRange = range.take_flattened_range(analyzer, arena).unwrap().into();
+            // use the replacement map
+            replacement_map.iter().for_each(|(replace, replacement)| {
+                range.replace_dep(*replace, replacement.0.clone(), analyzer, arena);
+            });
+            range.cache_eval(analyzer, arena).unwrap();
+            var.set_range(analyzer, range).unwrap();
+        }
+
+        // update the vars dep_on
+        if let Some(ref mut dep_on) = var.underlying_mut(analyzer)?.dep_on {
+            dep_on.iter_mut().for_each(|d| {
+                if let Some((_, r)) = replacement_map.get(&(*d).into()) {
+                    *d = *r
+                }
+            });
+        }
+
+        Ok(())
+    }
+
+    pub fn add_deps(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        replacement_map: &BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>,
+    ) -> Result<bool, GraphError> {
+        let mut unsat = false;
+        self.result_func_ctx
+            .ctx_deps(analyzer)?
+            .iter()
+            .try_for_each(|dep| {
+                let mut new_var = dep.underlying(analyzer)?.clone();
+                let new_cvar = ContextVarNode::from(analyzer.add_node(new_var));
+                self.update_var(analyzer, arena, replacement_map, new_cvar)?;
+                analyzer.add_edge(
+                    new_cvar,
+                    self.target_ctx,
+                    Edge::Context(ContextEdge::Variable),
+                );
+                self.target_ctx.add_ctx_dep(new_cvar, analyzer, arena)?;
+                if let Some(r) = new_cvar.range(analyzer)? {
+                    unsat |= r.unsat(analyzer, arena);
+                }
+                Ok(())
+            })?;
+        Ok(unsat)
+    }
+
+    pub fn apply_replacement_map(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        map: &BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>,
+        func_mut: FuncVis,
+    ) -> Result<ExprRet, GraphError> {
+        let ret_vars = self.generate_basic_return_vars(analyzer)?;
+        ret_vars
+            .iter()
+            .try_for_each(|ret_var| self.update_var(analyzer, arena, map, *ret_var))?;
+        // TODO: handle unsat
+        let _ = self.add_deps(analyzer, arena, map)?;
+
+        match func_mut {
+            FuncVis::Pure => {
+                // nothing more to do
+                Ok(ExprRet::Multi(
+                    ret_vars
+                        .into_iter()
+                        .filter_map(|var| {
+                            if !var.is_field(analyzer) {
+                                Some(ExprRet::from(var))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                ))
+            }
+            FuncVis::View => {
+                todo!("view")
+            }
+            FuncVis::Mut => {
+                todo!("mut")
+            }
+        }
+    }
+
     pub fn apply(
         &mut self,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
         inputs: &[ContextVarNode],
-    ) -> Result<(), GraphError> {
+    ) -> Result<bool, GraphError> {
         if self.genesis_func_ctx.underlying(analyzer)?.child.is_some() {
             // potentially multi-edge
-            Ok(())
+            Ok(false)
         } else {
             // single edge
             self.result_func_ctx = self.genesis_func_ctx;
-            let vis = self
+            let func_mut = self
                 .genesis_func_ctx
                 .associated_fn(analyzer)?
                 .visibility(analyzer)?;
-            let map = self.generate_replacement_map(analyzer, inputs, vis);
-            println!("map: {map:#?}");
-            Ok(())
+            let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
+            println!(
+                "replacement map: {:#?}",
+                map.iter()
+                    .map(|(k, (_, v))| {
+                        (
+                            ExprRet::Single(*k).debug_str_ranged(analyzer, arena),
+                            ExprRet::from(*v).debug_str_ranged(analyzer, arena),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            );
+            let res = self.apply_replacement_map(analyzer, arena, &map, func_mut)?;
+            self.target_ctx.push_expr(res, analyzer)?;
+            Ok(true)
         }
     }
 }
@@ -244,9 +415,7 @@ pub trait FuncApplier:
             ctxs.genesis_func_ctx = func.body_ctx(self);
         }
 
-        println!("{:#?}", ctxs);
-        ctxs.apply(self, func_inputs).into_expr_err(loc)?;
-        todo!();
+        ctxs.apply(self, arena, func_inputs).into_expr_err(loc)
         // ensure no modifiers (for now)
         // if pure function:
         //      grab requirements for context

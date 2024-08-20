@@ -21,6 +21,7 @@ use solang_parser::{
 };
 use std::collections::BTreeMap;
 
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum FuncVis {
     Pure,
     View,
