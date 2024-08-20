@@ -145,11 +145,11 @@ impl ApplyContexts {
         basic_map.iter().try_for_each(|(i, params)| {
             let input = inputs[*i].latest_version(analyzer);
             if params.len() == 1 {
-                let elem = Elem::from(input);
+                let elem = Elem::from(input).cast(Elem::from(params[0]));
                 mapping.insert(params[0].0.into(), (elem, input));
             } else {
                 let mut param_iter = params.iter();
-                let elem = Elem::from(input);
+                let elem = Elem::from(input).cast(Elem::from(params[0]));
                 mapping.insert(param_iter.next().unwrap().0.into(), (elem, input));
                 for param_field in param_iter {
                     let maybe_input_field = input.find_field(
@@ -160,7 +160,7 @@ impl ApplyContexts {
                             .expect("expected this to be field name"),
                     )?;
                     let input_field = maybe_input_field.expect("expected to have matching field");
-                    let elem = Elem::from(input_field);
+                    let elem = Elem::from(input_field).cast(Elem::from(*param_field));
                     mapping.insert(param_field.0.into(), (elem, input_field));
                 }
             }

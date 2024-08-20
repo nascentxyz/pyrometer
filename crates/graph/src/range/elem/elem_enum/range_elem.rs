@@ -59,6 +59,18 @@ impl RangeElem<Concrete> for Elem<Concrete> {
                     res
                 }
             }
+            (Self::Arena(_), _) => {
+                let (l, a) = self.dearenaize(arena);
+                let res = l.range_ord(other, arena);
+                self.rearenaize(l, a, arena);
+                res
+            }
+            (_, Self::Arena(_)) => {
+                let (r, b) = other.dearenaize(arena);
+                let res = self.range_ord(&r, arena);
+                self.rearenaize(r, b, arena);
+                res
+            }
             (Self::Concrete(a), Self::Concrete(b)) => a.range_ord(b, arena),
             (c @ Self::Concrete(_), Self::Reference(r)) => {
                 if let (Some(MinMaxed::Minimized(min)), Some(MinMaxed::Maximized(max))) =

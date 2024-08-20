@@ -313,19 +313,15 @@ impl Elem<Concrete> {
         }
     }
 
-    pub fn recurse_dearenaize(
-        &self,
-        analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Self>,
-    ) -> Self {
+    pub fn recurse_dearenaize(&self, arena: &mut RangeArena<Self>) -> Self {
         match self {
             Self::Arena(arena_idx) => arena
                 .ranges
                 .get(*arena_idx)
                 .unwrap()
                 .clone()
-                .recurse_dearenaize(analyzer, arena),
-            Self::Expr(expr) => expr.recurse_dearenaize(analyzer, arena),
+                .recurse_dearenaize(arena),
+            Self::Expr(expr) => expr.recurse_dearenaize(arena),
             e => e.clone(),
         }
     }

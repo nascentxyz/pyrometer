@@ -261,7 +261,7 @@ impl ContextVarNode {
             self.range_min(analyzer)
                 .unwrap_or_default()
                 .unwrap_or_default(),
-            new_min.recurse_dearenaize(analyzer, arena),
+            new_min.recurse_dearenaize(arena),
             new_min,
             new_min.recursive_dependent_on(analyzer, arena)?
         );

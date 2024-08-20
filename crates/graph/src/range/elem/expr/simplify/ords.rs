@@ -11,8 +11,13 @@ pub struct Ords {
     pub y_ord_z: Option<std::cmp::Ordering>,
     pub y_ord_zero: Option<std::cmp::Ordering>,
     pub x_ord_zero: Option<std::cmp::Ordering>,
+    pub z_ord_zero: Option<std::cmp::Ordering>,
     pub y_ord_one: Option<std::cmp::Ordering>,
     pub x_ord_one: Option<std::cmp::Ordering>,
+
+    pub x_y_sign_match: Option<bool>,
+    pub x_z_sign_match: Option<bool>,
+    pub y_z_sign_match: Option<bool>,
 }
 
 #[allow(dead_code)]
@@ -25,14 +30,27 @@ impl Ords {
     ) -> Self {
         let zero = Elem::from(Concrete::from(U256::ZERO));
         let one = Elem::from(Concrete::from(U256::from(1)));
-        Self {
+        let mut res = Self {
             x_ord_z: x.range_ord(z, arena),
             y_ord_z: y.range_ord(z, arena),
             y_ord_zero: y.range_ord(&zero, arena),
             x_ord_zero: x.range_ord(&zero, arena),
+            z_ord_zero: z.range_ord(&zero, arena),
             y_ord_one: y.range_ord(&one, arena),
             x_ord_one: x.range_ord(&one, arena),
+            x_y_sign_match: None,
+            x_z_sign_match: None,
+            y_z_sign_match: None,
+        };
+        if res.x_ord_zero.is_some() {
+            res.x_y_sign_match = Some(res.x_ord_zero == res.y_ord_zero);
+            res.x_z_sign_match = Some(res.x_ord_zero == res.z_ord_zero);
         }
+
+        if res.y_ord_zero.is_some() {
+            res.y_z_sign_match = Some(res.y_ord_zero == res.z_ord_zero);
+        }
+        res
     }
 
     pub fn x_gte_z(&self) -> bool {

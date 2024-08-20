@@ -122,15 +122,11 @@ impl RangeExpr<Concrete> {
         }
     }
 
-    pub fn recurse_dearenaize(
-        &self,
-        analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
-    ) -> Elem<Concrete> {
+    pub fn recurse_dearenaize(&self, arena: &mut RangeArena<Elem<Concrete>>) -> Elem<Concrete> {
         Elem::Expr(Self::new(
-            self.lhs.recurse_dearenaize(analyzer, arena).clone(),
+            self.lhs.recurse_dearenaize(arena).clone(),
             self.op,
-            self.rhs.recurse_dearenaize(analyzer, arena).clone(),
+            self.rhs.recurse_dearenaize(arena).clone(),
         ))
     }
 
