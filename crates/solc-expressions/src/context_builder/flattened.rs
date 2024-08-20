@@ -329,10 +329,6 @@ pub trait Flatten:
                 self.push_expr(FlatExpr::Return(*loc, maybe_ret_expr.is_some()));
             }
             Revert(loc, maybe_err_path, exprs) => {
-                // println!(
-                //     "err path? {maybe_err_path:?}, {:#?}",
-                //     exprs.iter().map(|i| i.to_string()).collect::<Vec<_>>()
-                // );
                 exprs.iter().rev().for_each(|expr| {
                     self.traverse_expression(expr, unchecked);
                 });
@@ -1906,7 +1902,7 @@ pub trait Flatten:
             unreachable!()
         };
         if let Some(cmd) = self.test_string_literal(cmd_str) {
-            self.run_test_command(arena, ctx, cmd, loc);
+            self.run_test_command(arena, ctx, cmd, loc)?;
         }
         Ok(())
     }
@@ -2319,12 +2315,10 @@ pub trait Flatten:
 
         match (true_killed, false_killed) {
             (true, true) => {
-                // println!("BOTH KILLED");
                 // both have been killed, delete the child and dont process the bodies
                 ctx.delete_child(self).into_expr_err(loc)?;
             }
             (true, false) => {
-                // println!("TRUE KILLED");
                 // the true context has been killed, delete child, process the false fork expression
                 // in the parent context and parse the false body
                 ctx.delete_child(self).into_expr_err(loc)?;
@@ -2959,8 +2953,6 @@ pub trait Flatten:
             }
             _ => {}
         };
-
-        // println!("TRY CATCH: {try_catch}");
 
         let mut func_and_inputs = ctx
             .pop_n_latest_exprs(n + 1 + call_block_inputs, loc, self)

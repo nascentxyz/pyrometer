@@ -162,11 +162,6 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         }
 
         let cvar = ContextVarNode::from(self.idx);
-        println!(
-            "flatten: {}, is_fundamental: {}",
-            cvar.name(analyzer).unwrap(),
-            cvar.is_fundamental(analyzer).unwrap()
-        );
         if cvar.is_fundamental(analyzer)? {
             return Ok(Elem::Reference(Reference::new(
                 cvar.global_first_version(analyzer).into(),
@@ -236,29 +231,22 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
                 if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
                     if arenaized.flattened_max.is_some() {
-                        println!("REF CACHED FLATTEN");
                         tracing::trace!("reference cache flatten hit");
                         return Ok(());
                     }
                 }
             }
 
-            println!("REF NOT CACHED FLATTEN: idx_{}", self.idx.index());
             let cvar = ContextVarNode::from(self.idx);
+            cvar.cache_flattened_range(g, arena)?;
             let flat_max = self.flatten(true, g, arena)?;
-            println!("REF NOT CACHED FLATTEN FLAT MAX: {}", flat_max);
             let simplified_flat_max = flat_max.simplify_maximize(g, arena)?;
-            println!(
-                "REF NOT CACHED FLATTEN SIMP FLAT MAX: {}",
-                simplified_flat_max
-            );
             Elem::Reference(Reference::new(self.idx)).set_arenaized_flattened(
                 true,
                 &simplified_flat_max,
                 arena,
             );
             self.flattened_max = Some(Box::new(simplified_flat_max));
-            cvar.cache_flattened_range(g, arena)?;
         }
         if self.flattened_min.is_none() {
             if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
@@ -270,6 +258,7 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 }
             }
             let cvar = ContextVarNode::from(self.idx);
+            cvar.cache_flattened_range(g, arena)?;
             let flat_min = self.flatten(false, g, arena)?;
             let simplified_flat_min = flat_min.simplify_minimize(g, arena)?;
             Elem::Reference(Reference::new(self.idx)).set_arenaized_flattened(
@@ -278,7 +267,6 @@ impl RangeElem<Concrete> for Reference<Concrete> {
                 arena,
             );
             self.flattened_min = Some(Box::new(simplified_flat_min));
-            cvar.cache_flattened_range(g, arena)?;
         }
         Ok(())
     }

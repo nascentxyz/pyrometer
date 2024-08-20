@@ -506,10 +506,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
     ) -> Result<(), GraphError> {
         self.arenaize(g, arena)?;
 
-        println!(
-            "cache flatten expr: {} {} {}, flat_min: {:?}, flat_max: {:?}",
-            self.lhs, self.op, self.rhs, self.flattened_min, self.flattened_max
-        );
         fn simp_minimize(
             this: &mut Elem<Concrete>,
             analyzer: &mut impl GraphBackend,
@@ -582,7 +578,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                     return Ok(this.clone());
                 }
             };
-            println!("WAS EXPR: {this}");
 
             if let Some(simp_min) = &this.flattened_max {
                 return Ok(*simp_min.clone());
@@ -594,8 +589,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
 
             let l = simp_maximize(&mut this.lhs, analyzer, arena)?;
             let r = simp_maximize(&mut this.rhs, analyzer, arena)?;
-            println!("lhs max: {l}");
-            println!("rhs max: {r}");
             let collapsed = collapse(l, this.op, r, arena);
             let res = match collapsed {
                 MaybeCollapsed::Concretes(l, op, r) => {
@@ -635,7 +628,6 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             if let Some(idx) = self.arena_idx(arena) {
                 if let Some(Elem::Expr(ref arenaized)) = arena.ranges.get(idx) {
                     if arenaized.flattened_max.is_some() {
-                        println!("HAD IN ARENA CACHE");
                         return Ok(());
                     }
                 };
@@ -643,12 +635,7 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
                 self.arenaize(g, arena)?;
             }
 
-            println!("getting lhs flatten");
             self.lhs.cache_flatten(g, arena)?;
-            println!(
-                "getting rhs flatten: {}",
-                self.rhs.recurse_dearenaize(g, arena)
-            );
             self.rhs.cache_flatten(g, arena)?;
 
             let mut flat_max = self.flatten(true, g, arena)?;

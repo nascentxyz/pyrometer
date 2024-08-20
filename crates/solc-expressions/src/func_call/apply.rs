@@ -214,25 +214,11 @@ impl ApplyContexts {
                 );
                 new_var.name.clone_from(&new_name);
                 new_var.display_name = new_name.clone();
-                // if let Some(mut range) = new_var.ty.take_range() {
-                //     // println!(
-                //     //     "pre-ret range: [{}, {}]",
-                //     //     range
-                //     //         .min
-                //     //         .recurse_dearenaize(analyzer, arena)
-                //     //         .simplify_minimize(analyzer, arena)
-                //     //         .unwrap(),
-                //     //     range
-                //     //         .max
-                //     //         .recurse_dearenaize(analyzer, arena)
-                //     //         .simplify_maximize(analyzer, arena)
-                //     //         .unwrap()
-                //     // );
-                //     range.min = range.min.simplify_minimize(analyzer, arena).unwrap();
-                //     range.max = range.max.simplify_maximize(analyzer, arena).unwrap();
-                //     // println!("post-ret range: [{}, {}]", range.min, range.max);
-                //     new_var.ty.set_range(range);
-                // }
+                if let Some(mut range) = new_var.ty.take_range() {
+                    range.min = range.min.simplify_minimize(analyzer, arena).unwrap();
+                    range.max = range.max.simplify_maximize(analyzer, arena).unwrap();
+                    new_var.ty.set_range(range);
+                }
                 let new_cvar = ContextVarNode::from(analyzer.add_node(new_var));
                 analyzer.add_edge(
                     new_cvar,
@@ -241,8 +227,7 @@ impl ApplyContexts {
                 );
                 self.target_ctx.add_var(new_cvar, analyzer).unwrap();
                 if let Ok(fields) = ret.var().fielded_to_fields(analyzer) {
-                    if fields.len() > 0 {
-                        // println!("had field");
+                    if !fields.is_empty() {
                         let mut vars = fields
                             .iter()
                             .map(|field| {
@@ -284,49 +269,14 @@ impl ApplyContexts {
         tracing::trace!("handling apply range update: {new_name}");
 
         // update the vars range
-        // if let Some(idx) = arena.idx(&Elem::from(var)) {
-        //     println!(
-        //         "{}",
-        //         arena.ranges[idx]
-        //             .clone()
-        //             .simplify_minimize(analyzer, arena)
-        //             .unwrap()
-        //     );
-        // }
         if let Some(mut range) = var.ty_mut(analyzer)?.take_range() {
-            println!(
-                "pre range {}: [{}, {}], [{:#?}, {:#?}]",
-                var.name(analyzer).unwrap(),
-                range.min,
-                range.max,
-                range.min.recurse_dearenaize(analyzer, arena),
-                range.max.recurse_dearenaize(analyzer, arena),
-            );
             let mut range: SolcRange = range.take_flattened_range(analyzer, arena).unwrap().into();
-            println!(
-                "flattened range {}: [{}, {}], [{:#?}, {:#?}]",
-                var.name(analyzer).unwrap(),
-                range.min,
-                range.max,
-                range.min.recurse_dearenaize(analyzer, arena),
-                range.max.recurse_dearenaize(analyzer, arena),
-            );
             // use the replacement map
             replacement_map
                 .iter()
                 .try_for_each(|(replace, replacement)| {
-                    println!("replace: {replace:?}, replacement: {}", replacement.0);
                     range.replace_dep(*replace, replacement.0.clone(), analyzer, arena)
                 })?;
-
-            println!(
-                "post range {}: [{}, {}], [{:#?}, {:#?}]",
-                var.name(analyzer).unwrap(),
-                range.min,
-                range.max,
-                range.min.recurse_dearenaize(analyzer, arena),
-                range.max.recurse_dearenaize(analyzer, arena),
-            );
             range.cache_eval(analyzer, arena).unwrap();
             var.set_range(analyzer, range).unwrap();
         }
@@ -354,7 +304,7 @@ impl ApplyContexts {
             .ctx_deps(analyzer)?
             .iter()
             .try_for_each(|dep| {
-                let mut new_var = dep.underlying(analyzer)?.clone();
+                let new_var = dep.underlying(analyzer)?.clone();
                 let new_cvar = ContextVarNode::from(analyzer.add_node(new_var));
                 self.update_var(analyzer, arena, replacement_map, new_cvar)?;
                 analyzer.add_edge(
@@ -416,6 +366,21 @@ impl ApplyContexts {
         arena: &mut RangeArena<Elem<Concrete>>,
         inputs: &[ContextVarNode],
     ) -> Result<bool, GraphError> {
+        match self
+            .genesis_func_ctx
+            .associated_fn(analyzer)
+            .unwrap()
+            .visibility(analyzer)
+            .unwrap()
+        {
+            FuncVis::Mut => {
+                return Ok(false);
+            }
+            FuncVis::View => {
+                return Ok(false);
+            }
+            _ => {}
+        }
         if self.genesis_func_ctx.underlying(analyzer)?.child.is_some() {
             // potentially multi-edge
             Ok(false)
@@ -427,17 +392,6 @@ impl ApplyContexts {
                 .associated_fn(analyzer)?
                 .visibility(analyzer)?;
             let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
-            // println!(
-            //     "replacement map: {:#?}",
-            //     map.iter()
-            //         .map(|(k, (_, v))| {
-            //             (
-            //                 ExprRet::Single(*k).debug_str_ranged(analyzer, arena),
-            //                 ExprRet::from(*v).debug_str_ranged(analyzer, arena),
-            //             )
-            //         })
-            //         .collect::<Vec<_>>()
-            // );
             let res = self.apply_replacement_map(analyzer, arena, &map, func_mut)?;
             self.target_ctx.push_expr(res, analyzer)?;
             Ok(true)
@@ -488,7 +442,11 @@ pub trait FuncApplier:
             }
 
             seen.push(func);
-            ctxs.genesis_func_ctx = func.body_ctx(self);
+            if let Some(body_ctx) = func.maybe_body_ctx(self) {
+                ctxs.genesis_func_ctx = body_ctx;
+            } else {
+                return Ok(false);
+            }
         }
 
         ctxs.apply(self, arena, func_inputs).into_expr_err(loc)

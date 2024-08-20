@@ -549,17 +549,11 @@ impl SolcRange {
         }
 
         let mut min = self.min.clone();
-
         min.arenaize(analyzer, arena)?;
         min.cache_flatten(analyzer, arena)?;
         let mut max = self.max.clone();
-        println!("max: {:#?}", max.recurse_dearenaize(analyzer, arena));
         max.arenaize(analyzer, arena)?;
         max.cache_flatten(analyzer, arena)?;
-        println!(
-            "post flatten max: {:#?}",
-            max.recurse_dearenaize(analyzer, arena)
-        );
 
         self.min = min.clone();
         self.max = max.clone();
@@ -752,10 +746,8 @@ impl Range<Concrete> for SolcRange {
     {
         let taken = std::mem::take(&mut self.flattened);
         if let Some(flat) = taken {
-            println!("HAD FLATTENED");
             Ok(flat)
         } else {
-            println!("CALCULATING FLATTENED");
             self.cache_flatten(analyzer, arena)?;
             self.take_flattened_range(analyzer, arena)
         }
