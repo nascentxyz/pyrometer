@@ -336,13 +336,7 @@ impl ContextVarNode {
         Ok(self
             .dependent_on(analyzer, true)?
             .iter()
-            .any(|dependent_on| {
-                if let Ok(t) = dependent_on.is_fundamental(analyzer) {
-                    t
-                } else {
-                    false
-                }
-            }))
+            .any(|dependent_on| dependent_on.is_fundamental(analyzer).unwrap_or_default()))
     }
 
     pub fn is_calldata_input(&self, analyzer: &impl GraphBackend) -> bool {

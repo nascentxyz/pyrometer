@@ -3,7 +3,7 @@ use crate::BinOp;
 use graph::{
     elem::*,
     nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge,
+    AnalyzerBackend,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 

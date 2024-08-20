@@ -4,7 +4,6 @@ mod ords;
 mod sub;
 
 pub use add::*;
-pub use div::*;
 pub use ords::*;
 pub use sub::*;
 
