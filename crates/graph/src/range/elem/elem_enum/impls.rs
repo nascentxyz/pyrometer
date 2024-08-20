@@ -265,6 +265,12 @@ impl<T: Ord> Elem<T> {
         let expr = RangeExpr::new(self, RangeOp::GetField, name);
         Elem::Expr(expr)
     }
+
+    /// Assigns the lhs to the rhs
+    pub fn assign(self, other: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Assign, other);
+        Elem::Expr(expr)
+    }
 }
 
 impl Elem<Concrete> {

@@ -436,7 +436,9 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         match op {
             RangeOp::Eq => {
                 // check that the constant is contained in the nonconst var range
-                let elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
+                let elem = Elem::from(nonconst_var).assign(Elem::from(
+                    const_var.latest_version_or_inherited_in_ctx(ctx, self),
+                ));
                 let evaled_min = nonconst_range
                     .evaled_range_min(self, arena)
                     .into_expr_err(loc)?;
@@ -447,13 +449,17 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 if !nonconst_range.contains_elem(&elem, self, arena) {
                     return Ok(true);
                 }
+                let next = self.advance_var_in_ctx_forcible(arena, nonconst_var, loc, ctx, true)?;
                 // if its contained, we can set the min & max to it
-                nonconst_var
-                    .set_range_min(self, arena, elem.clone())
+                next.set_range_min(self, arena, elem.clone())
                     .into_expr_err(loc)?;
-                nonconst_var
-                    .set_range_max(self, arena, elem)
-                    .into_expr_err(loc)?;
+                next.set_range_max(self, arena, elem).into_expr_err(loc)?;
+                let u_mut = next.underlying_mut(self).into_expr_err(loc)?;
+                if let Some(ref mut dep) = u_mut.dep_on {
+                    dep.push(const_var)
+                } else {
+                    u_mut.dep_on = Some(vec![const_var])
+                };
                 Ok(false)
             }
             RangeOp::Neq => {

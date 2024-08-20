@@ -579,7 +579,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             .clone();
         // get the old context
         let new_cvarnode;
-
+        let mut created_new = false;
         'a: {
             if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
                 if !force {
@@ -594,13 +594,14 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                             .latest_version_or_inherited_in_ctx(ctx, self)
                             .underlying(self)
                             .into_expr_err(loc)?;
-                        if prev_version.eq_ignore_loc(curr_version) && old_ctx == ctx {
+                        if prev_version.eq_ignore_loc_print(curr_version) && old_ctx == ctx {
                             // there was no change in the current context, just give them the current variable
                             new_cvarnode = cvar_node.into();
                             break 'a;
                         }
                     }
                 }
+                created_new = true;
 
                 // we ignore any errors here
                 new_cvar.is_fundamental = None;
@@ -671,6 +672,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
                 }
             } else {
+                created_new = true;
                 new_cvar.loc = Some(loc);
                 new_cvarnode = self.add_node(new_cvar);
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));

@@ -495,6 +495,8 @@ impl ContextVarNode {
         } else {
             new_tmp.set_range(analyzer, From::from(Elem::from(*self)))?;
         }
+        ctx.add_var(new_tmp, analyzer)?;
+        analyzer.add_edge(new_tmp, ctx, Edge::Context(ContextEdge::Variable));
 
         Ok(new_tmp)
     }

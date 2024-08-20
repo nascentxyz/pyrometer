@@ -24,11 +24,6 @@ pub(crate) fn ident_rules(
 ) -> Option<Elem<Concrete>> {
     let zero = Elem::from(Concrete::from(U256::ZERO));
     let one = Elem::from(Concrete::from(U256::from(1)));
-    println!(
-        "ident -- l: {}, op: {exec_op}, r: {}",
-        l.recurse_dearenaize(arena),
-        r.recurse_dearenaize(arena),
-    );
     match exec_op {
         RangeOp::Add(_) | RangeOp::Sub(_) => {
             // <x|0> + <y|0> = <x|y>
@@ -45,7 +40,6 @@ pub(crate) fn ident_rules(
             let l_ord_zero = l.range_ord(&zero, arena);
             if matches!(l_ord_zero, Some(std::cmp::Ordering::Equal)) {
                 // 0 / <y> = 0
-                println!("0 / r");
                 return Some(zero);
             }
 
@@ -53,7 +47,6 @@ pub(crate) fn ident_rules(
             if matches!(r_ord_one, Some(std::cmp::Ordering::Equal)) {
                 // <x> / <1> = x
                 // rhs == 1
-                println!("l / 1");
                 return Some((*l).clone());
             }
 
@@ -64,14 +57,12 @@ pub(crate) fn ident_rules(
                     Some(std::cmp::Ordering::Less) => {
                         if matches!(r_ord_l, Some(std::cmp::Ordering::Less)) {
                             // <x> / <y> = 0 if y < x && y.sign < 0 && x.sign < 0
-                            println!("(neg) r < l, zero");
                             return Some(zero);
                         }
                     }
                     Some(std::cmp::Ordering::Greater) => {
                         if matches!(r_ord_l, Some(std::cmp::Ordering::Greater)) {
                             // <x> / <y> = 0 if y > x && y.sign >= 0 && x.sign >= 0
-                            println!("r > l, zero");
                             return Some(zero);
                         }
                     }
@@ -82,7 +73,6 @@ pub(crate) fn ident_rules(
             if matches!(r.range_ord(l, arena), Some(std::cmp::Ordering::Equal)) {
                 // <x> / <x> = 1
                 // rhs == lhs, its a one
-                println!("l / l");
                 return Some(one);
             }
 

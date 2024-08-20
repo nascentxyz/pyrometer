@@ -260,14 +260,34 @@ impl ApplyContexts {
 
         // update the vars range
         if let Some(mut range) = var.ty_mut(analyzer)?.take_range() {
+            println!(
+                "og range: [{:#?},{:#?}]",
+                range.min.recurse_dearenaize(arena),
+                range.max.recurse_dearenaize(arena)
+            );
             let mut range: SolcRange = range.take_flattened_range(analyzer, arena).unwrap().into();
+            println!(
+                "flat range: [{:#?},{:#?}]",
+                range.min.recurse_dearenaize(arena),
+                range.max.recurse_dearenaize(arena)
+            );
             // use the replacement map
             replacement_map
                 .iter()
                 .try_for_each(|(replace, replacement)| {
                     range.replace_dep(*replace, replacement.0.clone(), analyzer, arena)
                 })?;
+            println!(
+                "replace range: [{:#?},{:#?}]",
+                range.min.recurse_dearenaize(arena),
+                range.max.recurse_dearenaize(arena)
+            );
             range.cache_eval(analyzer, arena).unwrap();
+            println!(
+                "eval range: [{:#?},{:#?}]",
+                range.min.recurse_dearenaize(arena),
+                range.max.recurse_dearenaize(arena)
+            );
             var.set_range(analyzer, range).unwrap();
         }
 
@@ -382,6 +402,7 @@ impl ApplyContexts {
                 .associated_fn(analyzer)?
                 .visibility(analyzer)?;
             let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
+            println!("replacement map: {:#?}", map);
             let res = self.apply_replacement_map(analyzer, arena, &map, func_mut)?;
             self.target_ctx.push_expr(res, analyzer)?;
             Ok(true)

@@ -260,6 +260,10 @@ impl RangeElem<Concrete> for RangeExpr<Concrete> {
             return Ok(*arenaized);
         }
 
+        if self.op == RangeOp::Assign {
+            return self.rhs.flatten(maximize, analyzer, arena);
+        }
+
         let lhs = self.lhs.flatten(maximize, analyzer, arena)?;
         let rhs = self.rhs.flatten(maximize, analyzer, arena)?;
         Ok(Elem::Expr(RangeExpr::new(lhs, self.op, rhs)))

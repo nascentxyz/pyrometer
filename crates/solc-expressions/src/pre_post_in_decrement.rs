@@ -3,7 +3,7 @@ use crate::BinOp;
 use graph::{
     elem::*,
     nodes::{Concrete, ContextNode, ContextVarNode, ExprRet},
-    AnalyzerBackend,
+    AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
@@ -28,6 +28,7 @@ pub trait PrePostIncDecrement:
         loc: Loc,
         rhs: &ExprRet,
     ) -> Result<(), ExprErr> {
+        println!("HERERERERERE");
         match rhs {
             ExprRet::CtxKilled(kind) => {
                 ctx.kill(self, loc, *kind).into_expr_err(loc)?;
@@ -48,6 +49,8 @@ pub trait PrePostIncDecrement:
                 if increment {
                     if pre {
                         let rhs = self.add_concrete_var(ctx, Concrete::from(U256::from(1)), loc)?;
+                        ctx.add_var(rhs, self).into_expr_err(loc)?;
+                        self.add_edge(rhs, ctx, Edge::Context(ContextEdge::Variable));
                         self.op(arena, loc, cvar, rhs, ctx, RangeOp::Add(false), true)?;
                         let dup = cvar
                             .latest_version(self)

@@ -29,6 +29,18 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             }
         }
 
+        if self.op == RangeOp::Assign {
+            if maximize {
+                let rhs_max = self.rhs.maximize(analyzer, arena)?;
+                self.rhs.set_arenaized_cache(true, &rhs_max, arena);
+                return Ok(rhs_max);
+            } else {
+                let rhs_min = self.rhs.minimize(analyzer, arena)?;
+                self.rhs.set_arenaized_cache(false, &rhs_min, arena);
+                return Ok(rhs_min);
+            }
+        }
+
         let (lhs_min, lhs_max, rhs_min, rhs_max) = self.spread(analyzer, arena)?;
         let res = self.exec(
             (lhs_min, lhs_max, rhs_min, rhs_max),
@@ -111,6 +123,18 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
 
         if let Some(v) = self.arenaized_flat_cache(maximize, arena) {
             return Ok(*v);
+        }
+
+        if self.op == RangeOp::Assign {
+            if maximize {
+                let rhs_max = self.rhs.simplify_maximize(analyzer, arena)?;
+                self.rhs.set_arenaized_flattened(true, &rhs_max, arena);
+                return Ok(rhs_max);
+            } else {
+                let rhs_min = self.rhs.simplify_minimize(analyzer, arena)?;
+                self.rhs.set_arenaized_flattened(false, &rhs_min, arena);
+                return Ok(rhs_min);
+            }
         }
 
         let (lhs_min, lhs_max, rhs_min, rhs_max) = self.simplify_spread(analyzer, arena)?;
@@ -317,6 +341,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             RangeOp::Cast => exec_cast(
                 &lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize, analyzer, arena,
             ),
+            RangeOp::Assign => {
+                if maximize {
+                    Some(rhs_max)
+                } else {
+                    Some(rhs_min)
+                }
+            }
         }
         .unwrap_or_else(|| Elem::Expr(self.clone()));
         tracing::trace!("result: {res:?}");

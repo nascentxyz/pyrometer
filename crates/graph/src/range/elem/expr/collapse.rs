@@ -59,6 +59,10 @@ pub fn collapse(
 ) -> MaybeCollapsed {
     tracing::trace!("collapsing: {l} {op} {r}");
 
+    if op == RangeOp::Assign {
+        return MaybeCollapsed::Collapsed(r);
+    }
+
     let l = if let Elem::Expr(e) = l {
         match collapse(*e.lhs, e.op, *e.rhs, arena) {
             MaybeCollapsed::Not(l, op, r) => Elem::Expr(RangeExpr::new(l, op, r)),

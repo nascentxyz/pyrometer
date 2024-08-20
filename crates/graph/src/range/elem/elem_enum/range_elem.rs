@@ -116,6 +116,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
+        println!("flattening: {self}");
         match self {
             Self::Reference(d) => d.flatten(maximize, analyzer, arena),
             Self::Concrete(c) => c.flatten(maximize, analyzer, arena),

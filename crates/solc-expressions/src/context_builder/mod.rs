@@ -107,15 +107,22 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                 }
 
                 let latest = latest.latest_version_or_inherited_in_ctx(ctx, self);
+                let ret = self
+                    .advance_var_in_ctx_forcible(arena, latest, loc, ctx, true)
+                    .unwrap();
                 let path = ctx.path(self);
-                let res = latest.underlying_mut(self).into_expr_err(loc);
+                let res = ret.underlying_mut(self).into_expr_err(loc);
                 match res {
                     Ok(var) => {
                         tracing::trace!("Returning: {}, {}", path, var.display_name);
                         var.is_return = true;
-                        self.add_edge(latest, ctx, Edge::Context(ContextEdge::Return));
+                        if var.ty.take_range().is_some() {
+                            // a return should always be a reference
+                            var.ty.set_range(Elem::from(latest).into()).unwrap();
+                        }
+                        self.add_edge(ret, ctx, Edge::Context(ContextEdge::Return));
 
-                        let res = ctx.add_return_node(loc, latest, self).into_expr_err(loc);
+                        let res = ctx.add_return_node(loc, ret, self).into_expr_err(loc);
                         // ctx.kill(self, *loc, KilledKind::Ended);
                         let _ = self.add_if_err(res);
                     }

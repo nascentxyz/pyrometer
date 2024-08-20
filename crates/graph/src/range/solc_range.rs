@@ -645,7 +645,10 @@ impl Range<Concrete> for SolcRange {
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Self::ElemTy, GraphError> {
-        tracing::trace!("flattening min");
+        tracing::trace!(
+            "flattening min: {:?}",
+            self.range_min().recurse_dearenaize(arena)
+        );
         let flattened = self.range_min().flatten(false, analyzer, arena)?;
         tracing::trace!("simplifying flattened min");
         flattened.simplify_minimize(analyzer, arena)
