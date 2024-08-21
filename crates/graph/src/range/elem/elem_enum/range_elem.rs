@@ -556,6 +556,7 @@ impl RangeElem<Concrete> for Elem<Concrete> {
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
+        tracing::trace!("cache maximize: {self}");
         use Elem::*;
         match self {
             Reference(dy) => dy.cache_maximize(analyzer, arena),

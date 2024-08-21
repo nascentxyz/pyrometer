@@ -197,7 +197,9 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
             rhs_cvar.tmp_of(self).into_expr_err(loc)?;
 
         if let Some(ref mut dep_on) = new_lhs.underlying_mut(self).into_expr_err(loc)?.dep_on {
-            dep_on.push(rhs_cvar)
+            dep_on.push(rhs_cvar);
+            dep_on.sort();
+            dep_on.dedup();
         } else {
             new_lhs.set_dependent_on(self).into_expr_err(loc)?;
         }
@@ -341,8 +343,21 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         rhs: ContextVarNode,
         loc: Loc,
     ) -> Result<(), ExprErr> {
+        tracing::trace!(
+            "checking if {} is an index/length into/of an array",
+            maybe_arr_attr.display_name(self).unwrap()
+        );
         if let Some(index) = maybe_arr_attr.index_access_to_index(self) {
             let array = maybe_arr_attr.index_access_to_array(self).unwrap();
+            tracing::trace!(
+                "{} is an index into {}. rhs: {:#?}",
+                ExprRet::from(maybe_arr_attr).debug_str_ranged(self, arena),
+                array.display_name(self).unwrap(),
+                rhs.range_max(self)
+                    .unwrap()
+                    .unwrap()
+                    .recurse_dearenaize(arena),
+            );
             let latest_arr = array.latest_version_or_inherited_in_ctx(ctx, self);
             let new_arr = self.advance_var_in_ctx_forcible(arena, latest_arr, loc, ctx, true)?;
             let new_elem = Elem::from(latest_arr).set_indices(RangeDyn::new_for_indices(
@@ -360,6 +375,11 @@ pub trait Assign: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized 
         }
 
         if let Some(array) = maybe_arr_attr.len_var_to_array(self) {
+            tracing::trace!(
+                "{} is an index into {}",
+                maybe_arr_attr.display_name(self).unwrap(),
+                array.display_name(self).unwrap(),
+            );
             let latest_arr = array.latest_version_or_inherited_in_ctx(ctx, self);
             let new_arr = self.advance_var_in_ctx_forcible(arena, latest_arr, loc, ctx, true)?;
             let new_elem = Elem::from(latest_arr).set_length(Elem::from(rhs));

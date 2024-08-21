@@ -1,4 +1,4 @@
-use crate::{BinOp, ErrType, SolcError, Variable};
+use crate::{Assign, BinOp, ErrType, SolcError, Variable};
 
 use graph::{
     elem::*,
@@ -148,6 +148,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         err: ErrType,
         loc: Loc,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
+        let og_lhs = new_lhs;
+        let og_rhs = new_rhs;
         tracing::trace!(
             "require: {} {op} {}",
             new_lhs.display_name(self).into_expr_err(loc)?,
@@ -240,11 +242,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             };
 
             // we take the previous version because for the solver we actually dont want the updated range
-            let base = Elem::Expr(RangeExpr::new(
-                new_lhs.previous_version(self).unwrap_or(new_lhs).into(),
-                op,
-                new_rhs.previous_version(self).unwrap_or(new_rhs).into(),
-            ));
+            let base = Elem::Expr(RangeExpr::new(og_lhs.into(), op, og_rhs.into()));
 
             // construct a temporary variable that represent the conditional we just checked
             let conditional_var = ContextVar {
@@ -263,6 +261,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 dep_on: {
                     let mut deps = new_lhs.dependent_on(self, true).into_expr_err(loc)?;
                     deps.extend(new_rhs.dependent_on(self, true).into_expr_err(loc)?);
+                    deps.sort();
+                    deps.dedup();
                     Some(deps)
                 },
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
@@ -359,6 +359,21 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             new_lhs.is_tmp(self).unwrap()
         );
 
+        self.maybe_assign_to_parent_array(
+            arena,
+            ctx,
+            og_rhs,
+            new_rhs.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
+        )?;
+        self.maybe_assign_to_parent_array(
+            arena,
+            ctx,
+            og_lhs,
+            new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
+        )?;
+
         Ok(tmp_cvar)
     }
 
@@ -433,6 +448,25 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         mut nonconst_range: SolcRange,
     ) -> Result<bool, ExprErr> {
         tracing::trace!("Setting range for nonconst from const");
+
+        let prev_nonconst = nonconst_var.previous_version(self);
+        let u_mut = nonconst_var.underlying_mut(self).into_expr_err(loc)?;
+        if let Some(ref mut dep_on) = u_mut.dep_on {
+            dep_on.push(const_var);
+            if let Some(prev) = prev_nonconst {
+                dep_on.push(prev);
+            };
+            dep_on.sort();
+            dep_on.dedup();
+        } else {
+            let deps = if let Some(prev) = prev_nonconst {
+                vec![const_var, prev]
+            } else {
+                vec![const_var]
+            };
+            u_mut.dep_on = Some(deps);
+        }
+
         match op {
             RangeOp::Eq => {
                 // check that the constant is contained in the nonconst var range
@@ -449,17 +483,13 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 if !nonconst_range.contains_elem(&elem, self, arena) {
                     return Ok(true);
                 }
-                let next = self.advance_var_in_ctx_forcible(arena, nonconst_var, loc, ctx, true)?;
                 // if its contained, we can set the min & max to it
-                next.set_range_min(self, arena, elem.clone())
+                nonconst_var
+                    .set_range_min(self, arena, elem.clone())
                     .into_expr_err(loc)?;
-                next.set_range_max(self, arena, elem).into_expr_err(loc)?;
-                let u_mut = next.underlying_mut(self).into_expr_err(loc)?;
-                if let Some(ref mut dep) = u_mut.dep_on {
-                    dep.push(const_var)
-                } else {
-                    u_mut.dep_on = Some(vec![const_var])
-                };
+                nonconst_var
+                    .set_range_max(self, arena, elem)
+                    .into_expr_err(loc)?;
                 Ok(false)
             }
             RangeOp::Neq => {
@@ -649,6 +679,37 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         mut rhs_range: SolcRange,
     ) -> Result<bool, ExprErr> {
         tracing::trace!("Setting range for nonconst from nonconst");
+
+        let prev_nonconst = new_lhs.previous_version(self);
+        let u_mut = new_lhs.underlying_mut(self).into_expr_err(loc)?;
+        if let Some(ref mut dep_on) = u_mut.dep_on {
+            dep_on.push(new_rhs);
+            if let Some(prev) = prev_nonconst {
+                dep_on.push(prev);
+            };
+            dep_on.sort();
+            dep_on.dedup();
+        } else {
+            let deps = if let Some(prev) = prev_nonconst {
+                vec![new_rhs, prev]
+            } else {
+                vec![new_rhs]
+            };
+            u_mut.dep_on = Some(deps);
+        }
+
+        let next_rhs = self.advance_var_in_ctx_forcible(arena, new_rhs, loc, ctx, true)?;
+        let u_mut = next_rhs.underlying_mut(self).into_expr_err(loc)?;
+        if let Some(ref mut dep_on) = u_mut.dep_on {
+            dep_on.push(new_lhs);
+            dep_on.push(new_rhs);
+            dep_on.sort();
+            dep_on.dedup();
+        } else {
+            u_mut.dep_on = Some(vec![new_lhs, new_rhs]);
+        }
+        let new_rhs = next_rhs;
+
         match op {
             RangeOp::Eq => {
                 // check that there is overlap in the ranges

@@ -1,7 +1,7 @@
 use crate::{assign::Assign, env::Env, ContextBuilder};
 
 use graph::{
-    elem::Elem,
+    elem::{Elem, RangeElem},
     nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
@@ -706,6 +706,26 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         }
 
         self.mark_dirty(new_cvarnode);
+        if !created_new {
+            // clear arena cache
+            if let Some(mut range) = ContextVarNode::from(new_cvarnode)
+                .ty_mut(self)
+                .unwrap()
+                .take_range()
+            {
+                range.min_cached = None;
+                range.max_cached = None;
+                range.flattened = None;
+                ContextVarNode::from(new_cvarnode)
+                    .set_range(self, range)
+                    .into_expr_err(loc)?;
+            }
+            let mut elem = Elem::from(new_cvarnode);
+            elem.arenaize(self, arena).into_expr_err(loc)?;
+            let (mut a, idx) = elem.dearenaize(arena);
+            a.uncache();
+            elem.rearenaize(a, idx, arena);
+        }
         // if !cvar_node.is_fielded(self).into_expr_err(loc)?
         //     && !cvar_node.is_concrete(self).into_expr_err(loc)?
         //     && created_new

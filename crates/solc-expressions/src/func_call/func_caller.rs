@@ -162,9 +162,9 @@ pub trait FuncCaller:
         );
         // entry calls and try catches cannot be applied
         if !entry_call && !try_catch {
-            if let Ok(true) = self.apply(arena, ctx, func_node, inputs, loc) {
-                return Ok(());
-            }
+            // if let Ok(true) = self.apply(arena, ctx, func_node, inputs, loc) {
+            //     return Ok(());
+            // }
         }
 
         // pseudocode:

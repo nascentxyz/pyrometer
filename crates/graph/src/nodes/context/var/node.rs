@@ -25,11 +25,11 @@ impl AsDotStr for ContextVarNode {
         let range_str = if let Some(r) = underlying.ty.ref_range(analyzer).unwrap() {
             format!(
                 "[{}, {}]",
-                r.simplified_range_min(analyzer, arena)
+                r.evaled_range_min(analyzer, arena)
                     .unwrap()
                     .to_range_string(false, analyzer, arena)
                     .s,
-                r.simplified_range_max(analyzer, arena)
+                r.evaled_range_max(analyzer, arena)
                     .unwrap()
                     .to_range_string(false, analyzer, arena)
                     .s
@@ -373,6 +373,8 @@ impl ContextVarNode {
             Some(arr.into())
         } else if let Some(prev) = self.previous_version(analyzer) {
             prev.index_access_to_array(analyzer)
+        } else if let Some(prev) = self.previous_or_inherited_version(analyzer) {
+            prev.index_access_to_array(analyzer)
         } else {
             None
         }
@@ -399,7 +401,10 @@ impl ContextVarNode {
     pub fn index_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         let arr = analyzer
             .graph()
-            .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
+            .edges_directed(
+                self.global_first_version(analyzer).into(),
+                Direction::Outgoing,
+            )
             .find(|edge| *edge.weight() == Edge::Context(ContextEdge::IndexAccess))
             .map(|edge| edge.target())?;
         Some(ContextVarNode::from(arr).latest_version(analyzer))
@@ -409,7 +414,10 @@ impl ContextVarNode {
     pub fn index_access_to_index(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         analyzer
             .graph()
-            .edges_directed(self.first_version(analyzer).0.into(), Direction::Incoming)
+            .edges_directed(
+                self.global_first_version(analyzer).0.into(),
+                Direction::Incoming,
+            )
             .find(|edge| matches!(*edge.weight(), Edge::Context(ContextEdge::Index)))
             .map(|e| ContextVarNode::from(e.source()))
     }
@@ -456,6 +464,8 @@ impl ContextVarNode {
             }
         }
 
+        result.sort();
+        result.dedup();
         self.underlying_mut(analyzer)?.dep_on = Some(result);
         Ok(())
     }
@@ -492,6 +502,9 @@ impl ContextVarNode {
                 return_self = true;
             }
         }
+
+        result.sort();
+        result.dedup();
 
         Ok(result)
     }

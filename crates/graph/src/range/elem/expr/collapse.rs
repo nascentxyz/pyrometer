@@ -58,7 +58,7 @@ pub fn collapse(
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> MaybeCollapsed {
     tracing::trace!("collapsing: {l} {op} {r}");
-
+    return MaybeCollapsed::Not(l, op, r);
     if op == RangeOp::Assign {
         return MaybeCollapsed::Collapsed(r);
     }

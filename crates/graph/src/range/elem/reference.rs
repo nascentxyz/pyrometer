@@ -286,12 +286,17 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Elem<Concrete>, GraphError> {
         if let Some(MinMaxed::Maximized(cached)) = self.maximized.clone() {
+            tracing::trace!("cached maximize idx_{}: {cached}", self.idx.index());
             return Ok(*cached);
         }
 
         if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
             if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
                 if let Some(MinMaxed::Maximized(cached)) = arenaized.maximized.clone() {
+                    tracing::trace!(
+                        "arena cached maximize idx_{} - arena_idx_{idx}: {cached}",
+                        self.idx.index()
+                    );
                     return Ok(*cached);
                 }
             }
@@ -304,6 +309,10 @@ impl RangeElem<Concrete> for Reference<Concrete> {
             | VarType::User(TypeNode::Ty(_), maybe_range)
             | VarType::BuiltIn(_, maybe_range) => {
                 if let Some(range) = maybe_range {
+                    if self.idx.index() == 144 {
+                        println!("range: {range:#?}");
+                    }
+
                     range.evaled_range_max(analyzer, arena)
                 } else {
                     Ok(Elem::Reference(self.clone()))
@@ -419,11 +428,19 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         g: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<(), GraphError> {
+        tracing::trace!("cache maximize: idx_{}", self.idx.index());
         self.arenaize(g, arena)?;
+
         if self.maximized.is_none() {
             let cvar = ContextVarNode::from(self.idx);
             cvar.cache_eval_range(g, arena)?;
+            tracing::trace!("starting maximization of idx_{}", self.idx.index());
             let max = self.maximize(g, arena)?;
+            tracing::trace!(
+                "cache maximize idx_{} -- arena_idx_{} res: {max}",
+                self.idx.index(),
+                arena.idx(&Elem::from(self.clone())).unwrap()
+            );
             Elem::Reference(Reference::new(self.idx)).set_arenaized_cache(true, &max, arena);
             self.maximized = Some(MinMaxed::Maximized(Box::new(max)));
         }

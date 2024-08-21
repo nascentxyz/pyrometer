@@ -62,6 +62,11 @@ impl ApplyContexts {
         accumulated_vars: &mut BTreeMap<ContractNode, BTreeSet<ContextVarNode>>,
     ) -> Result<(), GraphError> {
         if let Some(contract) = ctx.maybe_associated_contract(analyzer)? {
+            //println!(
+            //     "ctx: {}, storage_inputs: {:#?}",
+            //     ctx.path(analyzer),
+            //     ctx.storage_vars(analyzer)
+            // );
             ctx.storage_vars(analyzer).iter().for_each(|var| {
                 let entry = accumulated_vars.entry(contract).or_default();
                 entry.insert(var.global_first_version(analyzer));
@@ -83,6 +88,10 @@ impl ApplyContexts {
             .associated_fn(analyzer)
             .unwrap()
             .ordered_param_names(analyzer);
+        //println!(
+        //     "fn param names: {fn_param_names:?}, input vars: {:#?}",
+        //     self.genesis_func_ctx.input_variables(analyzer)
+        // );
         let mut res: BTreeMap<usize, Vec<ContextVarNode>> = Default::default();
         self.genesis_func_ctx
             .input_variables(analyzer)
@@ -133,6 +142,11 @@ impl ApplyContexts {
         accumulated_vars: &mut BTreeMap<ContractNode, BTreeSet<ContextVarNode>>,
     ) -> Result<(), GraphError> {
         if let Some(contract) = ctx.maybe_associated_contract(analyzer)? {
+            //println!(
+            //     "ctx: {}, storage_vars: {:#?}",
+            //     ctx.path(analyzer),
+            //     ctx.storage_vars(analyzer)
+            // );
             ctx.storage_vars(analyzer).iter().for_each(|var| {
                 let entry = accumulated_vars.entry(contract).or_default();
                 entry.insert(var.global_first_version(analyzer));
@@ -181,6 +195,7 @@ impl ApplyContexts {
     ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, GraphError> {
         let mut mapping: BTreeMap<_, _> = Default::default();
         let basic_map = self.basic_params(analyzer)?;
+        //println!("basic map: {basic_map:#?}");
         basic_map.iter().try_for_each(|(i, params)| {
             let input = inputs[*i].latest_version(analyzer);
             if params.len() == 1 {
@@ -213,7 +228,9 @@ impl ApplyContexts {
                 // TODO: handle fielded storage
                 // TODO: handle env vars
                 let storage_params = self.storage_params(analyzer)?;
+                //println!("storage params: {:#?}", storage_params);
                 let storage_inputs = self.storage_inputs(analyzer)?;
+                //println!("storage inputs: {:#?}", storage_inputs);
 
                 for (contract, params) in storage_params.iter() {
                     // for each storage param, make sure we have it in storage inputs
@@ -222,6 +239,7 @@ impl ApplyContexts {
                         let mut diff: BTreeSet<_> = Default::default();
                         for param in params {
                             let Ok(param_name) = param.name(analyzer) else {
+                                //println!("no param name");
                                 continue;
                             };
                             if !contract_inputs
@@ -254,12 +272,17 @@ impl ApplyContexts {
                                 continue;
                             }
                         } else {
+                            //println!(
+                            //     "missing storage for different contract: {:?} {contract:?}",
+                            //     self.target_ctx.maybe_associated_contract(analyzer)
+                            // );
                             todo!();
                         }
                     }
                 }
 
                 let storage_inputs = self.storage_inputs(analyzer)?;
+                //println!("new storage inputs: {:#?}", storage_inputs);
                 for (contract, params) in storage_params {
                     if let Some(contract_inputs) = storage_inputs.get(&contract) {
                         for param in params {
@@ -272,13 +295,14 @@ impl ApplyContexts {
                                 };
                                 i_name == param_name
                             }) {
-                                let latest_input = input.latest_version(analyzer);
+                                let latest_input = input
+                                    .latest_version_or_inherited_in_ctx(self.target_ctx, analyzer);
                                 let elem = Elem::from(latest_input).cast(Elem::from(param));
                                 let overwrite =
                                     mapping.insert(param.0.into(), (elem, latest_input));
                                 assert!(overwrite.is_none());
                             } else {
-                                println!("couldnt find {param_name} used in caller");
+                                //println!("couldnt find {param_name} used in caller");
                                 // the context didnt have all the used storage, bring it in
                             }
                         }
@@ -339,6 +363,7 @@ impl ApplyContexts {
                 if let Some(mut range) = new_var.ty.take_range() {
                     range.min = range.min.simplify_minimize(analyzer, arena).unwrap();
                     range.max = range.max.simplify_maximize(analyzer, arena).unwrap();
+                    //println!("{func_name}.{i}: [{}, {}]", range.min, range.max);
                     new_var.ty.set_range(range).unwrap();
                 }
                 let new_cvar = ContextVarNode::from(analyzer.add_node(new_var));
@@ -606,6 +631,7 @@ impl ApplyContexts {
                 // single edge
                 self.result_func_ctx = self.genesis_func_ctx;
                 let map = self.generate_replacement_map(analyzer, arena, inputs, func_mut)?;
+                //println!("map: {map:#?}");
                 if let Some(res) = self.apply_replacement_map(analyzer, arena, &map, func_mut)? {
                     self.target_ctx.push_expr(res, analyzer)?;
                 } else {

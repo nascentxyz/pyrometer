@@ -473,7 +473,7 @@ impl ContextVarNode {
             .underlying(analyzer)?
             .clone()
             .as_tmp(analyzer, ctx, loc)?;
-        new_underlying.storage = None;
+
         if matches!(
             new_underlying.storage,
             Some(StorageLocation::Storage(..)) | Some(StorageLocation::StoragePtr(..))
@@ -484,6 +484,7 @@ impl ContextVarNode {
                 new_underlying.dep_on = Some(vec![*self]);
             }
         }
+        // new_underlying.storage = None;
         let new_tmp = ContextVarNode::from(analyzer.add_node(new_underlying));
 
         if new_tmp.is_fielded(analyzer)? {
