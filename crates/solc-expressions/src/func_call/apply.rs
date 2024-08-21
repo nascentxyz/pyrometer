@@ -1,6 +1,6 @@
 use crate::helper::CallerHelper;
 use crate::Flatten;
-use graph::nodes::CallFork;
+use graph::nodes::{CallFork, KilledKind};
 use graph::RangeEval;
 
 use graph::{
@@ -108,6 +108,22 @@ impl ApplyContexts {
         Ok(accumulated_vars)
     }
 
+    /// Recursively collects storage parameters from the context tree.
+    ///
+    /// This function traverses the context tree, starting from the given context,
+    /// and accumulates all storage variables encountered. It handles both single
+    /// contexts and forked contexts (multiple execution paths).
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - A mutable reference to the analyzer backend.
+    /// * `ctx` - The current context node being processed.
+    /// * `accumulated_vars` - A mutable reference to a map that accumulates
+    ///   storage variables, grouped by contract.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success (`Ok(())`) or a `GraphError` if an error occurs.
     fn recursive_storage_params(
         analyzer: &mut impl AnalyzerBackend,
         ctx: ContextNode,
@@ -134,6 +150,25 @@ impl ApplyContexts {
         Ok(())
     }
 
+    /// Generates a replacement map for function application.
+    ///
+    /// This method creates a mapping between the function parameters and the provided input variables.
+    /// It handles both simple and complex (fielded) parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `inputs` - The input variables to be mapped to function parameters.
+    /// * `func_mut` - The mutability of the function being applied.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a `BTreeMap` that maps `NodeIdx` to a tuple of `(Elem<Concrete>, ContextVarNode)`,
+    /// or a `GraphError` if an error occurs during the process.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if there are issues accessing or manipulating the graph structure.
     pub fn generate_replacement_map(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -180,6 +215,26 @@ impl ApplyContexts {
         Ok(mapping)
     }
 
+    /// Generates basic return variables for the function application.
+    ///
+    /// This method creates new context variables in the target context to represent
+    /// the return values of the applied function. It handles both single and multi-field
+    /// return types.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of tuples. Each tuple contains:
+    /// - A `ContextVarNode` representing a return variable.
+    /// - A boolean indicating whether this is a real return value (true) or a field of a struct return value (false).
+    ///
+    /// # Errors
+    ///
+    /// Returns a `GraphError` if any graph operations fail.
     pub fn generate_basic_return_vars(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -248,6 +303,21 @@ impl ApplyContexts {
             .collect::<Vec<_>>())
     }
 
+    /// Updates a variable in the context based on the replacement map.
+    ///
+    /// This method updates the range and dependencies of a given context variable
+    /// using the provided replacement map.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    /// * `replacement_map` - A map of node indices to their replacements.
+    /// * `var` - The context variable to be updated.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `GraphError` if an error occurs.
     pub fn update_var(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -283,6 +353,22 @@ impl ApplyContexts {
         Ok(())
     }
 
+    /// Adds dependencies to the target context based on the result function context.
+    ///
+    /// This method processes the context dependencies from the result function context,
+    /// updates them using the replacement map, and adds them to the target context.
+    /// It also checks for unsatisfiable conditions during this process.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    /// * `replacement_map` - A map of node indices to their replacements.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a boolean indicating whether an unsatisfiable condition was encountered,
+    /// or a `GraphError` if an error occurs during the process.
     pub fn add_deps(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -304,6 +390,11 @@ impl ApplyContexts {
                 );
                 self.target_ctx.add_ctx_dep(new_cvar, analyzer, arena)?;
                 if let Some(r) = new_cvar.range(analyzer)? {
+                    if let Ok(max) = r.evaled_range_max(analyzer, arena) {
+                        if let Some(conc) = max.maybe_concrete() {
+                            unsat |= matches!(conc.val, Concrete::Bool(false));
+                        }
+                    }
                     unsat |= r.unsat(analyzer, arena);
                 }
                 Ok(())
@@ -311,24 +402,48 @@ impl ApplyContexts {
         Ok(unsat)
     }
 
+    /// Applies the replacement map to update the context and generate return values.
+    ///
+    /// This method processes the replacement map, updates the context variables,
+    /// and generates return values based on the function's mutability.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    /// * `map` - The replacement map containing node replacements.
+    /// * `func_mut` - The mutability of the function being applied.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing an `Option<ExprRet>`. The `Option` is `None` if the
+    /// application results in an unsatisfiable condition, otherwise it contains
+    /// the function's return value(s).
+    ///
+    /// # Errors
+    ///
+    /// Returns a `GraphError` if any graph operations fail during the process.
     pub fn apply_replacement_map(
         &self,
         analyzer: &mut impl AnalyzerBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
         map: &BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>,
         func_mut: FuncVis,
-    ) -> Result<ExprRet, GraphError> {
+    ) -> Result<Option<ExprRet>, GraphError> {
         let ret_vars = self.generate_basic_return_vars(analyzer, arena)?;
         ret_vars
             .iter()
             .try_for_each(|(ret_var, _)| self.update_var(analyzer, arena, map, *ret_var))?;
-        // TODO: handle unsat
-        let _ = self.add_deps(analyzer, arena, map)?;
+
+        if self.add_deps(analyzer, arena, map)? {
+            return Ok(None);
+        }
 
         match func_mut {
             FuncVis::Pure => {
                 // nothing more to do
-                Ok(ExprRet::Multi(
+                analyzer.add_completed_pure(true, true, false, self.target_ctx);
+                Ok(Some(ExprRet::Multi(
                     ret_vars
                         .into_iter()
                         .filter_map(|(var, real_ret)| {
@@ -339,7 +454,7 @@ impl ApplyContexts {
                             }
                         })
                         .collect(),
-                ))
+                )))
             }
             FuncVis::View => {
                 todo!("view")
@@ -350,19 +465,36 @@ impl ApplyContexts {
         }
     }
 
+    /// Applies a function to the given context with the provided inputs.
+    ///
+    /// This method handles the application of a function to a specific context,
+    /// updating the context and generating return values based on the function's
+    /// behavior and mutability.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    /// * `inputs` - A slice of `ContextVarNode` representing the function inputs.
+    /// * `loc` - The location information for error reporting.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a boolean indicating whether the application was
+    /// successful (true) or not (false), or a `GraphError` if an error occurred.
     pub fn apply(
         &mut self,
         analyzer: &mut impl AnalyzerBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
         inputs: &[ContextVarNode],
+        loc: Loc,
     ) -> Result<bool, GraphError> {
-        match self
+        let func_mut = self
             .genesis_func_ctx
-            .associated_fn(analyzer)
-            .unwrap()
-            .visibility(analyzer)
-            .unwrap()
-        {
+            .associated_fn(analyzer)?
+            .visibility(analyzer)?;
+
+        match func_mut {
             FuncVis::Mut => {
                 return Ok(false);
             }
@@ -371,20 +503,51 @@ impl ApplyContexts {
             }
             _ => {}
         }
-        if self.genesis_func_ctx.underlying(analyzer)?.child.is_some() {
-            // potentially multi-edge
-            Ok(false)
-        } else {
-            // single edge
-            self.result_func_ctx = self.genesis_func_ctx;
-            let func_mut = self
-                .genesis_func_ctx
-                .associated_fn(analyzer)?
-                .visibility(analyzer)?;
-            let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
-            let res = self.apply_replacement_map(analyzer, arena, &map, func_mut)?;
-            self.target_ctx.push_expr(res, analyzer)?;
-            Ok(true)
+
+        let edges = self.genesis_func_ctx.successful_edges(analyzer)?;
+        match edges.len() {
+            0 => {
+                // always reverts
+                self.target_ctx.kill(analyzer, loc, KilledKind::Revert)?;
+                Ok(true)
+            }
+            1 => {
+                // single edge
+                self.result_func_ctx = self.genesis_func_ctx;
+                let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
+                if let Some(res) = self.apply_replacement_map(analyzer, arena, &map, func_mut)? {
+                    self.target_ctx.push_expr(res, analyzer)?;
+                } else {
+                    // unsat
+                    self.target_ctx.kill(analyzer, loc, KilledKind::Revert)?;
+                }
+                Ok(true)
+            }
+            _ => {
+                // multi-edge
+                let new_forks = self
+                    .target_ctx
+                    .set_apply_forks(loc, edges.clone(), analyzer)
+                    .unwrap();
+                let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
+                edges.into_iter().zip(new_forks.into_iter()).try_for_each(
+                    |(edge_ctx, new_target)| {
+                        self.target_ctx = new_target;
+                        self.result_func_ctx = edge_ctx;
+                        if let Some(res) =
+                            self.apply_replacement_map(analyzer, arena, &map, func_mut)?
+                        {
+                            self.target_ctx.push_expr(res, analyzer)?;
+                        } else {
+                            // unsat
+                            self.target_ctx
+                                .kill(analyzer, loc, KilledKind::Unreachable)?;
+                        }
+                        Ok(())
+                    },
+                )?;
+                Ok(true)
+            }
         }
     }
 }
@@ -393,15 +556,31 @@ impl ApplyContexts {
 pub trait FuncApplier:
     GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ApplyStatTracker
 {
+    /// Applies a function to a given context with the provided inputs.
+    ///
+    /// This method is the entry point for function application. It sets up the necessary
+    /// contexts and delegates the actual application process to the `ApplyContexts` struct.
+    ///
+    /// # Arguments
+    ///
+    /// * `arena` - A mutable reference to the `RangeArena` for element storage.
+    /// * `ctx` - The target `ContextNode` where the function will be applied.
+    /// * `func` - The `FunctionNode` representing the function to be applied.
+    /// * `func_inputs` - A slice of `ContextVarNode` representing the function inputs.
+    /// * `loc` - The `Loc` (location) information for error reporting.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a boolean indicating whether the application was successful (true)
+    /// or not (false), or an `ExprErr` if an error occurred during the process.
     #[tracing::instrument(level = "trace", skip_all)]
     fn apply(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         func: FunctionNode,
         func_inputs: &[ContextVarNode],
-        seen: &mut Vec<FunctionNode>,
+        loc: Loc,
     ) -> Result<bool, ExprErr> {
         tracing::trace!(
             "Trying to apply function: {} onto context {}",
@@ -422,7 +601,8 @@ pub trait FuncApplier:
                 return Ok(false);
             }
 
-            if seen.contains(&func) {
+            // if we have handled a function, we should have a body context already
+            if self.handled_funcs().contains(&func) {
                 return Ok(false);
             }
 
@@ -431,7 +611,6 @@ pub trait FuncApplier:
                 self.interpret_entry_func(func, arena);
             }
 
-            seen.push(func);
             if let Some(body_ctx) = func.maybe_body_ctx(self) {
                 ctxs.genesis_func_ctx = body_ctx;
             } else {
@@ -439,7 +618,7 @@ pub trait FuncApplier:
             }
         }
 
-        ctxs.apply(self, arena, func_inputs).into_expr_err(loc)
+        ctxs.apply(self, arena, func_inputs, loc).into_expr_err(loc)
     }
 }
 

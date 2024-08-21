@@ -25,12 +25,12 @@ impl AsDotStr for ContextVarNode {
         let range_str = if let Some(r) = underlying.ty.ref_range(analyzer).unwrap() {
             format!(
                 "[{}, {}]",
-                r.range_min()
-                    // .unwrap()
+                r.simplified_range_min(analyzer, arena)
+                    .unwrap()
                     .to_range_string(false, analyzer, arena)
                     .s,
-                r.range_max()
-                    // .unwrap()
+                r.simplified_range_max(analyzer, arena)
+                    .unwrap()
                     .to_range_string(false, analyzer, arena)
                     .s
             )

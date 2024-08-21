@@ -594,7 +594,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                             .latest_version_or_inherited_in_ctx(ctx, self)
                             .underlying(self)
                             .into_expr_err(loc)?;
-                        if prev_version.eq_ignore_loc_print(curr_version) && old_ctx == ctx {
+                        if prev_version.eq_ignore_loc(curr_version) && old_ctx == ctx {
                             // there was no change in the current context, just give them the current variable
                             new_cvarnode = cvar_node.into();
                             break 'a;

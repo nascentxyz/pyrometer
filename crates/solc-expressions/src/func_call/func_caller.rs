@@ -160,8 +160,9 @@ pub trait FuncCaller:
             func_node.name(self).unwrap(),
             ctx.path(self)
         );
-        if !entry_call {
-            if let Ok(true) = self.apply(arena, ctx, loc, func_node, inputs, &mut vec![]) {
+        // entry calls and try catches cannot be applied
+        if !entry_call && !try_catch {
+            if let Ok(true) = self.apply(arena, ctx, func_node, inputs, loc) {
                 return Ok(());
             }
         }

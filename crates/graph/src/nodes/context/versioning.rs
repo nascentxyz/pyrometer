@@ -345,10 +345,8 @@ impl ContextNode {
         let mut stack = std::collections::VecDeque::new();
         stack.push_front(*self);
 
-        let mut n = 0;
         for _ in 0..end_worlds.len().saturating_sub(1) {
             let curr = stack.pop_front().unwrap();
-            n += 1;
             let left_subctx = Context::add_subctx(
                 SubContextKind::Fork {
                     parent_ctx: curr,
