@@ -2,7 +2,7 @@ use crate::{assign::Assign, env::Env, ContextBuilder};
 
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, VarNode},
+    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 use shared::{ExprErr, GraphError, IntoExprErr, NodeIdx, RangeArena};
@@ -227,6 +227,32 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 .into_expr_err(ident.loc)?;
             Ok(())
         }
+    }
+
+    fn contract_variable(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        contract: ContractNode,
+        name: String,
+        loc: Loc,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        let mut all_storage_vars_tys = contract.all_storage_vars(self);
+        all_storage_vars_tys.sort();
+        all_storage_vars_tys.dedup();
+        let Some(varnode) = all_storage_vars_tys
+            .iter()
+            .find(|var| var.name(self).expect("var had no name") == name)
+        else {
+            return Ok(None);
+        };
+
+        let var = ContextVar::from_var_node(self, arena, loc, *varnode)?;
+        let cvar = ContextVarNode::from(self.add_node(var));
+        // only add it as a storage var
+        ctx.add_storage_var(cvar, self)?;
+        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+        Ok(Some(cvar))
     }
 
     fn disambiguate(

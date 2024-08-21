@@ -1404,12 +1404,17 @@ pub trait Flatten:
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn end(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         stack: &mut Vec<FlatExpr>,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
+        if !ctx.return_nodes(self).unwrap().is_empty() {
+            return Ok(());
+        }
+
         let mut loc = None;
         let mut stack_rev_iter = stack.iter().rev();
         let mut loccer = stack_rev_iter.next();
@@ -1418,6 +1423,7 @@ pub trait Flatten:
             loccer = stack_rev_iter.next();
         }
         let loc = loc.unwrap_or(ctx.underlying(self).unwrap().loc);
+
         let fun = ctx.associated_fn(self).into_expr_err(loc)?;
         let vars = if ctx.return_nodes(self).unwrap().is_empty() {
             ExprRet::Multi(

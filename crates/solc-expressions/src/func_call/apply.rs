@@ -1,11 +1,14 @@
 use crate::helper::CallerHelper;
-use crate::Flatten;
+use crate::{Flatten, Variable};
 use graph::nodes::{CallFork, KilledKind};
 use graph::RangeEval;
 
 use graph::{
     elem::{Elem, RangeElem},
-    nodes::{Concrete, ContextNode, ContextVarNode, ContractNode, ExprRet, FuncVis, FunctionNode},
+    nodes::{
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, FuncVis,
+        FunctionNode,
+    },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Range, SolcRange,
 };
 use shared::{AnalyzerLike, ExprErr, GraphError, IntoExprErr, NodeIdx, RangeArena};
@@ -171,7 +174,8 @@ impl ApplyContexts {
     /// This function will return an error if there are issues accessing or manipulating the graph structure.
     pub fn generate_replacement_map(
         &self,
-        analyzer: &mut impl AnalyzerBackend,
+        analyzer: &mut impl Variable,
+        arena: &mut RangeArena<Elem<Concrete>>,
         inputs: &[ContextVarNode],
         func_mut: FuncVis,
     ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, GraphError> {
@@ -206,7 +210,80 @@ impl ApplyContexts {
                 // nothing else to do
             }
             FuncVis::View => {
-                todo!()
+                // TODO: handle fielded storage
+                // TODO: handle env vars
+                let storage_params = self.storage_params(analyzer)?;
+                let storage_inputs = self.storage_inputs(analyzer)?;
+
+                for (contract, params) in storage_params.iter() {
+                    // for each storage param, make sure we have it in storage inputs
+                    let missing_params = if let Some(contract_inputs) = storage_inputs.get(contract)
+                    {
+                        let mut diff: BTreeSet<_> = Default::default();
+                        for param in params {
+                            let Ok(param_name) = param.name(analyzer) else {
+                                continue;
+                            };
+                            if !contract_inputs
+                                .iter()
+                                .any(|input| input.name(analyzer).as_ref() == Ok(&param_name))
+                            {
+                                diff.insert(*param);
+                            }
+                        }
+                        diff
+                    } else {
+                        params.clone()
+                    };
+                    for missing_param in missing_params {
+                        let Ok(param_name) = missing_param.name(analyzer) else {
+                            continue;
+                        };
+
+                        if self.target_ctx.maybe_associated_contract(analyzer)? == Some(*contract) {
+                            if analyzer
+                                .contract_variable(
+                                    arena,
+                                    self.target_ctx,
+                                    *contract,
+                                    param_name,
+                                    Loc::Implicit,
+                                )
+                                .is_err()
+                            {
+                                continue;
+                            }
+                        } else {
+                            todo!();
+                        }
+                    }
+                }
+
+                let storage_inputs = self.storage_inputs(analyzer)?;
+                for (contract, params) in storage_params {
+                    if let Some(contract_inputs) = storage_inputs.get(&contract) {
+                        for param in params {
+                            let Ok(param_name) = param.name(analyzer) else {
+                                continue;
+                            };
+                            if let Some(input) = contract_inputs.iter().find(|&input| {
+                                let Ok(i_name) = input.name(analyzer) else {
+                                    return false;
+                                };
+                                i_name == param_name
+                            }) {
+                                let latest_input = input.latest_version(analyzer);
+                                let elem = Elem::from(latest_input).cast(Elem::from(param));
+                                let overwrite =
+                                    mapping.insert(param.0.into(), (elem, latest_input));
+                                assert!(overwrite.is_none());
+                            } else {
+                                println!("couldnt find {param_name} used in caller");
+                                // the context didnt have all the used storage, bring it in
+                            }
+                        }
+                    }
+                }
             }
             FuncVis::Mut => {
                 todo!()
@@ -435,13 +512,11 @@ impl ApplyContexts {
             .iter()
             .try_for_each(|(ret_var, _)| self.update_var(analyzer, arena, map, *ret_var))?;
 
-        if self.add_deps(analyzer, arena, map)? {
-            return Ok(None);
-        }
-
         match func_mut {
             FuncVis::Pure => {
-                // nothing more to do
+                if self.add_deps(analyzer, arena, map)? {
+                    return Ok(None);
+                }
                 analyzer.add_completed_pure(true, true, false, self.target_ctx);
                 Ok(Some(ExprRet::Multi(
                     ret_vars
@@ -457,9 +532,27 @@ impl ApplyContexts {
                 )))
             }
             FuncVis::View => {
-                todo!("view")
+                if self.add_deps(analyzer, arena, map)? {
+                    return Ok(None);
+                }
+
+                analyzer.add_completed_view(true, true, false, self.target_ctx);
+
+                Ok(Some(ExprRet::Multi(
+                    ret_vars
+                        .into_iter()
+                        .filter_map(|(var, real_ret)| {
+                            if real_ret {
+                                Some(ExprRet::from(var))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                )))
             }
             FuncVis::Mut => {
+                // TODO:
                 todo!("mut")
             }
         }
@@ -484,7 +577,7 @@ impl ApplyContexts {
     /// successful (true) or not (false), or a `GraphError` if an error occurred.
     pub fn apply(
         &mut self,
-        analyzer: &mut impl AnalyzerBackend,
+        analyzer: &mut (impl AnalyzerBackend + Variable),
         arena: &mut RangeArena<Elem<Concrete>>,
         inputs: &[ContextVarNode],
         loc: Loc,
@@ -494,17 +587,15 @@ impl ApplyContexts {
             .associated_fn(analyzer)?
             .visibility(analyzer)?;
 
-        match func_mut {
-            FuncVis::Mut => {
-                return Ok(false);
-            }
-            FuncVis::View => {
-                return Ok(false);
-            }
-            _ => {}
+        if func_mut == FuncVis::Mut {
+            return Ok(false);
         }
 
-        let edges = self.genesis_func_ctx.successful_edges(analyzer)?;
+        let edges = if self.genesis_func_ctx.underlying(analyzer)?.child.is_some() {
+            self.genesis_func_ctx.successful_edges(analyzer)?
+        } else {
+            vec![self.genesis_func_ctx]
+        };
         match edges.len() {
             0 => {
                 // always reverts
@@ -514,7 +605,7 @@ impl ApplyContexts {
             1 => {
                 // single edge
                 self.result_func_ctx = self.genesis_func_ctx;
-                let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
+                let map = self.generate_replacement_map(analyzer, arena, inputs, func_mut)?;
                 if let Some(res) = self.apply_replacement_map(analyzer, arena, &map, func_mut)? {
                     self.target_ctx.push_expr(res, analyzer)?;
                 } else {
@@ -529,7 +620,7 @@ impl ApplyContexts {
                     .target_ctx
                     .set_apply_forks(loc, edges.clone(), analyzer)
                     .unwrap();
-                let map = self.generate_replacement_map(analyzer, inputs, func_mut)?;
+                let map = self.generate_replacement_map(analyzer, arena, inputs, func_mut)?;
                 edges.into_iter().zip(new_forks.into_iter()).try_for_each(
                     |(edge_ctx, new_target)| {
                         self.target_ctx = new_target;

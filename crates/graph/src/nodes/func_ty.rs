@@ -465,7 +465,7 @@ impl FunctionNode {
         let param_nodes = self.params(analyzer);
         param_nodes
             .iter()
-            .map(|i| i.name(analyzer).unwrap())
+            .map(|i| i.maybe_name(analyzer).unwrap().unwrap_or("".to_string()))
             .collect()
     }
 

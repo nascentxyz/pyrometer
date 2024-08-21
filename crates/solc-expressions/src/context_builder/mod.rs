@@ -123,7 +123,6 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                         self.add_edge(ret, ctx, Edge::Context(ContextEdge::Return));
 
                         let res = ctx.add_return_node(loc, ret, self).into_expr_err(loc);
-                        // ctx.kill(self, *loc, KilledKind::Ended);
                         let _ = self.add_if_err(res);
                     }
                     Err(e) => self.add_expr_err(e),
