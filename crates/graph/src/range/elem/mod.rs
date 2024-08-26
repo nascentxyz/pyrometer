@@ -102,6 +102,8 @@ pub enum RangeOp {
     GetField,
     /// Slice a memory object
     Slice,
+    /// Assign
+    Assign,
 }
 
 impl TryFrom<FlatExpr> for RangeOp {
@@ -176,6 +178,7 @@ impl RangeOp {
             GetField => false,
             Concat => false,
             Slice => false,
+            Assign => false,
         }
     }
 
@@ -293,6 +296,7 @@ impl fmt::Display for RangeOp {
             GetField => write!(f, "get_field"),
             SetLength => write!(f, "set_length"),
             Slice => write!(f, "slice"),
+            Assign => write!(f, "assign"),
         }
     }
 }

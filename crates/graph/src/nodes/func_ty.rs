@@ -21,6 +21,7 @@ use solang_parser::{
 };
 use std::collections::BTreeMap;
 
+#[derive(Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub enum FuncVis {
     Pure,
     View,
@@ -464,7 +465,7 @@ impl FunctionNode {
         let param_nodes = self.params(analyzer);
         param_nodes
             .iter()
-            .map(|i| i.name(analyzer).unwrap())
+            .map(|i| i.maybe_name(analyzer).unwrap().unwrap_or("".to_string()))
             .collect()
     }
 

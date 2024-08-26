@@ -265,6 +265,12 @@ impl<T: Ord> Elem<T> {
         let expr = RangeExpr::new(self, RangeOp::GetField, name);
         Elem::Expr(expr)
     }
+
+    /// Assigns the lhs to the rhs
+    pub fn assign(self, other: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Assign, other);
+        Elem::Expr(expr)
+    }
 }
 
 impl Elem<Concrete> {
@@ -313,19 +319,15 @@ impl Elem<Concrete> {
         }
     }
 
-    pub fn recurse_dearenaize(
-        &self,
-        analyzer: &impl GraphBackend,
-        arena: &mut RangeArena<Self>,
-    ) -> Self {
+    pub fn recurse_dearenaize(&self, arena: &mut RangeArena<Self>) -> Self {
         match self {
             Self::Arena(arena_idx) => arena
                 .ranges
                 .get(*arena_idx)
                 .unwrap()
                 .clone()
-                .recurse_dearenaize(analyzer, arena),
-            Self::Expr(expr) => expr.recurse_dearenaize(analyzer, arena),
+                .recurse_dearenaize(arena),
+            Self::Expr(expr) => expr.recurse_dearenaize(arena),
             e => e.clone(),
         }
     }

@@ -2,7 +2,7 @@
 use crate::variable::Variable;
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
+    nodes::{CallFork, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, KilledKind},
     AnalyzerBackend, ContextEdge, Edge,
 };
 use shared::{ExprErr, GraphError, IntoExprErr, RangeArena};
@@ -107,16 +107,22 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                 }
 
                 let latest = latest.latest_version_or_inherited_in_ctx(ctx, self);
+                let ret = self
+                    .advance_var_in_ctx_forcible(arena, latest, loc, ctx, true)
+                    .unwrap();
                 let path = ctx.path(self);
-                let res = latest.underlying_mut(self).into_expr_err(loc);
+                let res = ret.underlying_mut(self).into_expr_err(loc);
                 match res {
                     Ok(var) => {
                         tracing::trace!("Returning: {}, {}", path, var.display_name);
                         var.is_return = true;
-                        self.add_edge(latest, ctx, Edge::Context(ContextEdge::Return));
+                        if var.ty.take_range().is_some() {
+                            // a return should always be a reference
+                            var.ty.set_range(Elem::from(latest).into()).unwrap();
+                        }
+                        self.add_edge(ret, ctx, Edge::Context(ContextEdge::Return));
 
-                        let res = ctx.add_return_node(loc, latest, self).into_expr_err(loc);
-                        // ctx.kill(self, *loc, KilledKind::Ended);
+                        let res = ctx.add_return_node(loc, ret, self).into_expr_err(loc);
                         let _ = self.add_if_err(res);
                     }
                     Err(e) => self.add_expr_err(e),
@@ -146,31 +152,20 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
             Loc,
         ) -> Result<(), ExprErr>,
     ) -> Result<(), ExprErr> {
-        let live_edges = ctx.live_edges(self).into_expr_err(loc)?;
-        // tracing::trace!(
-        //     "Applying to live edges of: {}. edges: {:#?}",
-        //     ctx.path(self),
-        //     live_edges.iter().map(|i| i.path(self)).collect::<Vec<_>>(),
-        // );
-        if !ctx.killed_or_ret(self).into_expr_err(loc)? {
-            if ctx.underlying(self).into_expr_err(loc)?.child.is_some() {
-                if live_edges.is_empty() {
-                    Ok(())
-                } else {
-                    live_edges
-                        .iter()
-                        .try_for_each(|ctx| closure(self, arena, *ctx, loc))
+        if let Some(child) = ctx.underlying(self).into_expr_err(loc)?.child {
+            match child {
+                CallFork::Call(call) => {
+                    self.apply_to_edges(call, loc, arena, closure)?;
                 }
-            } else if live_edges.is_empty() {
-                closure(self, arena, ctx, loc)
-            } else {
-                live_edges
-                    .iter()
-                    .try_for_each(|ctx| closure(self, arena, *ctx, loc))
+                CallFork::Fork(w1, w2) => {
+                    self.apply_to_edges(w1, loc, arena, closure)?;
+                    self.apply_to_edges(w2, loc, arena, closure)?;
+                }
             }
-        } else {
-            Ok(())
+        } else if !ctx.is_ended(self).into_expr_err(loc)? {
+            closure(self, arena, ctx, loc)?;
         }
+        Ok(())
     }
 
     /// The inverse of [`apply_to_edges`], used only for modifiers because modifiers have extremely weird

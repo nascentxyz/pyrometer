@@ -20,30 +20,30 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
         ctx: ContextNode,
         test_command: TestCommand,
         loc: Loc,
-    ) -> Option<()> {
+    ) -> Result<Option<()>, ExprErr> {
         match test_command {
             TestCommand::Variable(var_name, VariableCommand::RangeAssert { min, max }) => {
-                if let Some(var) = ctx.var_by_name_or_recurse(self, &var_name).ok()? {
+                if let Ok(Some(var)) = ctx.var_by_name_or_recurse(self, &var_name) {
                     return self.check_range(arena, var_name, var, min, max, loc);
                 } else {
                     let split = var_name.split('.').collect::<Vec<_>>();
-                    let base_name = split.first()?;
+                    let Some(base_name) = split.first() else {
+                        return Ok(None);
+                    };
                     let Ok(Some(base_var)) = ctx.var_by_name_or_recurse(self, base_name) else {
-                        self.add_expr_err(ExprErr::TestError(
+                        return Err(ExprErr::TestError(
                             loc,
                             format!("No variable \"{var_name}\" found in context"),
                         ));
-                        return None;
                     };
 
                     let mut curr_var = base_var;
                     for member in split.iter().skip(1) {
                         let Ok(Some(field)) = curr_var.find_field(self, member) else {
-                            self.add_expr_err(ExprErr::TestError(
+                            return Err(ExprErr::TestError(
                                 loc,
                                 format!("No variable \"{var_name}\" found in context"),
                             ));
-                            return None;
                         };
                         curr_var = field;
                     }
@@ -51,9 +51,11 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
                 }
             }
             TestCommand::Constraint(c) => {
-                let deps = ctx.ctx_deps(self).ok()?;
+                let Ok(deps) = ctx.ctx_deps(self) else {
+                    return Ok(None);
+                };
                 if !deps.iter().any(|dep| dep.display_name(self).unwrap() == c) {
-                    self.add_expr_err(ExprErr::TestError(
+                    return Err(ExprErr::TestError(
                         loc,
                         format!(
                             "No dependency \"{c}\" found for context, constraints: {:#?}",
@@ -67,7 +69,7 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
             TestCommand::Coverage(CoverageCommand::OnlyPath) => {
                 if let Some(parent) = ctx.underlying(self).unwrap().parent_ctx() {
                     if parent.underlying(self).unwrap().child.is_some() {
-                        self.add_expr_err(ExprErr::TestError(
+                        return Err(ExprErr::TestError(
                             loc,
                             "Expected a single path, but another was reached".to_string(),
                         ));
@@ -75,14 +77,14 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
                 }
             }
             TestCommand::Coverage(CoverageCommand::Unreachable) => {
-                self.add_expr_err(ExprErr::TestError(
+                return Err(ExprErr::TestError(
                     loc,
                     "Hit an unreachable path".to_string(),
-                ));
+                ))
             }
         }
 
-        None
+        Ok(None)
     }
 
     fn check_range(
@@ -93,16 +95,18 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
         min: Concrete,
         max: Concrete,
         loc: Loc,
-    ) -> Option<()> {
+    ) -> Result<Option<()>, ExprErr> {
         let min = Elem::from(min);
         let max = Elem::from(max);
         let latest = var.latest_version(self);
-        let eval_min =
-            self.add_if_err(latest.evaled_range_min(self, arena).into_expr_err(loc))??;
-        let eval_max =
-            self.add_if_err(latest.evaled_range_max(self, arena).into_expr_err(loc))??;
+        let Some(eval_min) = latest.evaled_range_min(self, arena).into_expr_err(loc)? else {
+            return Ok(None);
+        };
+        let Some(eval_max) = latest.evaled_range_max(self, arena).into_expr_err(loc)? else {
+            return Ok(None);
+        };
         if !eval_min.range_eq(&min, arena) {
-            self.add_expr_err(ExprErr::TestError(
+            return Err(ExprErr::TestError(
                 loc,
                 format!(
                     "Variable \"{var_name}\"'s minimum was {}, expected {}",
@@ -111,7 +115,7 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
             ));
         }
         if !eval_max.range_eq(&max, arena) {
-            self.add_expr_err(ExprErr::TestError(
+            return Err(ExprErr::TestError(
                 loc,
                 format!(
                     "Variable \"{var_name}\"'s maximum was {}, expected {}",
@@ -119,6 +123,6 @@ pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprEr
                 ),
             ));
         }
-        Some(())
+        Ok(Some(()))
     }
 }

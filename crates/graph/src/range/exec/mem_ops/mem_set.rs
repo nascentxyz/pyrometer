@@ -12,12 +12,15 @@ use std::collections::BTreeMap;
 
 impl RangeMemSet<Concrete> for RangeDyn<Concrete> {
     fn range_set_indices(&self, range: &Self) -> Option<Elem<Concrete>> {
+        tracing::trace!("setting range indices for: {self:?} {range:?}");
         let mut new_val = self.val.clone();
         let mut op_num = self.op_num;
         range.val.iter().for_each(|(k, (v, _))| {
             op_num += 1;
             new_val.insert(k.clone(), (v.clone(), op_num));
         });
+
+        println!("new val: {new_val:#?}");
 
         Some(Elem::ConcreteDyn(RangeDyn::new_w_op_nums(
             *self.len.clone(),

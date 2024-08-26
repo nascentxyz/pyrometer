@@ -83,10 +83,10 @@ impl ToRangeString for Elem<Concrete> {
     ) -> RangeElemString {
         match self {
             Elem::Concrete(c) => RangeElemString::new(c.val.as_human_string(), c.loc),
-            Elem::Reference(Reference { idx, .. }) => {
+            r @ Elem::Reference(Reference { idx, .. }) => {
                 let as_var = ContextVarNode::from(*idx);
-                let name = as_var.as_controllable_name(analyzer, arena).unwrap();
-                RangeElemString::new(name, as_var.loc(analyzer).unwrap())
+                // let name = as_var.as_controllable_name(analyzer, arena).unwrap();
+                RangeElemString::new(r.to_string(), as_var.loc(analyzer).unwrap())
             }
             Elem::ConcreteDyn(rd) => rd.to_range_string(maximize, analyzer, arena),
             Elem::Expr(expr) => expr.to_range_string(maximize, analyzer, arena),

@@ -502,7 +502,7 @@ impl Analyzer {
     pub fn print_errors(
         &self,
         file_mapping: &'_ BTreeMap<usize, String>,
-        mut src: &mut impl Cache<String>,
+        mut src: impl Cache<String>,
     ) {
         if self.expr_errs.is_empty() {
         } else {

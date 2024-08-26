@@ -1,22 +1,21 @@
 use crate::helper::CallerHelper;
-use crate::member_access::ListAccess;
-use crate::variable::Variable;
-use crate::Flatten;
-use graph::AsDotStr;
+use crate::{Flatten, Variable};
+use graph::nodes::{CallFork, KilledKind};
+use graph::RangeEval;
 
 use graph::{
-    elem::{Elem, RangeElem, RangeExpr, RangeOp},
+    elem::{Elem, RangeElem},
     nodes::{
-        Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, FuncVis, FunctionNode,
-        FunctionParamNode, KilledKind,
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, FuncVis,
+        FunctionNode,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Range, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Range, SolcRange,
 };
-use shared::{AnalyzerLike, ExprErr, IntoExprErr, NodeIdx, RangeArena, StorageLocation};
+use shared::{AnalyzerLike, ExprErr, GraphError, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 impl<T> FuncApplier for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr>
@@ -26,623 +25,717 @@ impl<T> FuncApplier for T where
         + ApplyStatTracker
 {
 }
+
+pub struct ApplyInputs<'a> {
+    /// Variables passed into the function
+    pub func_inputs: &'a [ContextVarNode],
+    /// Storage variables to be used in the function
+    pub storage_inputs: Option<&'a [ContextVarNode]>,
+    /// Environment variables (msg.sender, etc) to be used in the function
+    pub env_inputs: Option<&'a [ContextVarNode]>,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct ApplyContexts {
+    /// The context to place the return variables into
+    pub target_ctx: ContextNode,
+    /// The first context for the function that is to be applied
+    pub genesis_func_ctx: ContextNode,
+    /// The final context of the function that is to be applied (i.e. if genesis_func_ctx has subcontexts)
+    pub result_func_ctx: ContextNode,
+}
+
+impl ApplyContexts {
+    pub fn storage_inputs(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<BTreeMap<ContractNode, BTreeSet<ContextVarNode>>, GraphError> {
+        let mut accumulated_vars = Default::default();
+        Self::recursive_storage_inputs(analyzer, self.target_ctx, &mut accumulated_vars)?;
+        Ok(accumulated_vars)
+    }
+
+    /// Walk up the context tree accumulating all accessed storage variables
+    pub fn recursive_storage_inputs(
+        analyzer: &mut impl AnalyzerBackend,
+        ctx: ContextNode,
+        accumulated_vars: &mut BTreeMap<ContractNode, BTreeSet<ContextVarNode>>,
+    ) -> Result<(), GraphError> {
+        if let Some(contract) = ctx.maybe_associated_contract(analyzer)? {
+            //println!(
+            //     "ctx: {}, storage_inputs: {:#?}",
+            //     ctx.path(analyzer),
+            //     ctx.storage_vars(analyzer)
+            // );
+            ctx.storage_vars(analyzer).iter().for_each(|var| {
+                let entry = accumulated_vars.entry(contract).or_default();
+                entry.insert(var.global_first_version(analyzer));
+            });
+        }
+
+        if let Some(parent) = ctx.underlying(analyzer)?.parent_ctx() {
+            Self::recursive_storage_inputs(analyzer, parent, accumulated_vars)?;
+        }
+        Ok(())
+    }
+
+    pub fn basic_params(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<BTreeMap<usize, Vec<ContextVarNode>>, GraphError> {
+        let fn_param_names = self
+            .genesis_func_ctx
+            .associated_fn(analyzer)
+            .unwrap()
+            .ordered_param_names(analyzer);
+        //println!(
+        //     "fn param names: {fn_param_names:?}, input vars: {:#?}",
+        //     self.genesis_func_ctx.input_variables(analyzer)
+        // );
+        let mut res: BTreeMap<usize, Vec<ContextVarNode>> = Default::default();
+        self.genesis_func_ctx
+            .input_variables(analyzer)
+            .iter()
+            .try_for_each(|var| {
+                let var_name = var.name(analyzer).unwrap();
+                let pos = fn_param_names
+                    .iter()
+                    .position(|ordered_name| var_name == *ordered_name)
+                    .unwrap();
+                let mut vars = vec![*var];
+                vars.extend(var.fielded_to_fields(analyzer)?);
+                res.insert(pos, vars);
+                Ok(())
+            })?;
+        Ok(res)
+    }
+
+    /// Walk down the context tree from the application function context to find all needed storage variables
+    pub fn storage_params(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<BTreeMap<ContractNode, BTreeSet<ContextVarNode>>, GraphError> {
+        let mut accumulated_vars = Default::default();
+        Self::recursive_storage_params(analyzer, self.genesis_func_ctx, &mut accumulated_vars)?;
+        Ok(accumulated_vars)
+    }
+
+    /// Recursively collects storage parameters from the context tree.
+    ///
+    /// This function traverses the context tree, starting from the given context,
+    /// and accumulates all storage variables encountered. It handles both single
+    /// contexts and forked contexts (multiple execution paths).
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - A mutable reference to the analyzer backend.
+    /// * `ctx` - The current context node being processed.
+    /// * `accumulated_vars` - A mutable reference to a map that accumulates
+    ///   storage variables, grouped by contract.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success (`Ok(())`) or a `GraphError` if an error occurs.
+    fn recursive_storage_params(
+        analyzer: &mut impl AnalyzerBackend,
+        ctx: ContextNode,
+        accumulated_vars: &mut BTreeMap<ContractNode, BTreeSet<ContextVarNode>>,
+    ) -> Result<(), GraphError> {
+        if let Some(contract) = ctx.maybe_associated_contract(analyzer)? {
+            //println!(
+            //     "ctx: {}, storage_vars: {:#?}",
+            //     ctx.path(analyzer),
+            //     ctx.storage_vars(analyzer)
+            // );
+            ctx.storage_vars(analyzer).iter().for_each(|var| {
+                let entry = accumulated_vars.entry(contract).or_default();
+                entry.insert(var.global_first_version(analyzer));
+            });
+        }
+
+        if let Some(child) = ctx.underlying(analyzer)?.child {
+            match child {
+                CallFork::Call(c) => {
+                    Self::recursive_storage_params(analyzer, c, accumulated_vars)?;
+                }
+                CallFork::Fork(w1, w2) => {
+                    Self::recursive_storage_params(analyzer, w1, accumulated_vars)?;
+                    Self::recursive_storage_params(analyzer, w2, accumulated_vars)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Generates a replacement map for function application.
+    ///
+    /// This method creates a mapping between the function parameters and the provided input variables.
+    /// It handles both simple and complex (fielded) parameters.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `inputs` - The input variables to be mapped to function parameters.
+    /// * `func_mut` - The mutability of the function being applied.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a `BTreeMap` that maps `NodeIdx` to a tuple of `(Elem<Concrete>, ContextVarNode)`,
+    /// or a `GraphError` if an error occurs during the process.
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if there are issues accessing or manipulating the graph structure.
+    pub fn generate_replacement_map(
+        &self,
+        analyzer: &mut impl Variable,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        inputs: &[ContextVarNode],
+        func_mut: FuncVis,
+    ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, GraphError> {
+        let mut mapping: BTreeMap<_, _> = Default::default();
+        let basic_map = self.basic_params(analyzer)?;
+        //println!("basic map: {basic_map:#?}");
+        basic_map.iter().try_for_each(|(i, params)| {
+            let input = inputs[*i].latest_version(analyzer);
+            if params.len() == 1 {
+                let elem = Elem::from(input).cast(Elem::from(params[0]));
+                mapping.insert(params[0].0.into(), (elem, input));
+            } else {
+                let mut param_iter = params.iter();
+                let elem = Elem::from(input).cast(Elem::from(params[0]));
+                mapping.insert(param_iter.next().unwrap().0.into(), (elem, input));
+                for param_field in param_iter {
+                    let maybe_input_field = input.find_field(
+                        analyzer,
+                        &param_field
+                            .maybe_field_name(analyzer)
+                            .unwrap()
+                            .expect("expected this to be field name"),
+                    )?;
+                    let input_field = maybe_input_field.expect("expected to have matching field");
+                    let elem = Elem::from(input_field).cast(Elem::from(*param_field));
+                    mapping.insert(param_field.0.into(), (elem, input_field));
+                }
+            }
+            Ok(())
+        })?;
+        match func_mut {
+            FuncVis::Pure => {
+                // nothing else to do
+            }
+            FuncVis::View => {
+                // TODO: handle fielded storage
+                // TODO: handle env vars
+                let storage_params = self.storage_params(analyzer)?;
+                //println!("storage params: {:#?}", storage_params);
+                let storage_inputs = self.storage_inputs(analyzer)?;
+                //println!("storage inputs: {:#?}", storage_inputs);
+
+                for (contract, params) in storage_params.iter() {
+                    // for each storage param, make sure we have it in storage inputs
+                    let missing_params = if let Some(contract_inputs) = storage_inputs.get(contract)
+                    {
+                        let mut diff: BTreeSet<_> = Default::default();
+                        for param in params {
+                            let Ok(param_name) = param.name(analyzer) else {
+                                //println!("no param name");
+                                continue;
+                            };
+                            if !contract_inputs
+                                .iter()
+                                .any(|input| input.name(analyzer).as_ref() == Ok(&param_name))
+                            {
+                                diff.insert(*param);
+                            }
+                        }
+                        diff
+                    } else {
+                        params.clone()
+                    };
+                    for missing_param in missing_params {
+                        let Ok(param_name) = missing_param.name(analyzer) else {
+                            continue;
+                        };
+
+                        if self.target_ctx.maybe_associated_contract(analyzer)? == Some(*contract) {
+                            if analyzer
+                                .contract_variable(
+                                    arena,
+                                    self.target_ctx,
+                                    *contract,
+                                    param_name,
+                                    Loc::Implicit,
+                                )
+                                .is_err()
+                            {
+                                continue;
+                            }
+                        } else {
+                            //println!(
+                            //     "missing storage for different contract: {:?} {contract:?}",
+                            //     self.target_ctx.maybe_associated_contract(analyzer)
+                            // );
+                            todo!();
+                        }
+                    }
+                }
+
+                let storage_inputs = self.storage_inputs(analyzer)?;
+                //println!("new storage inputs: {:#?}", storage_inputs);
+                for (contract, params) in storage_params {
+                    if let Some(contract_inputs) = storage_inputs.get(&contract) {
+                        for param in params {
+                            let Ok(param_name) = param.name(analyzer) else {
+                                continue;
+                            };
+                            if let Some(input) = contract_inputs.iter().find(|&input| {
+                                let Ok(i_name) = input.name(analyzer) else {
+                                    return false;
+                                };
+                                i_name == param_name
+                            }) {
+                                let latest_input = input
+                                    .latest_version_or_inherited_in_ctx(self.target_ctx, analyzer);
+                                let elem = Elem::from(latest_input).cast(Elem::from(param));
+                                let overwrite =
+                                    mapping.insert(param.0.into(), (elem, latest_input));
+                                assert!(overwrite.is_none());
+                            } else {
+                                //println!("couldnt find {param_name} used in caller");
+                                // the context didnt have all the used storage, bring it in
+                            }
+                        }
+                    }
+                }
+            }
+            FuncVis::Mut => {
+                todo!()
+            }
+        }
+        Ok(mapping)
+    }
+
+    /// Generates basic return variables for the function application.
+    ///
+    /// This method creates new context variables in the target context to represent
+    /// the return values of the applied function. It handles both single and multi-field
+    /// return types.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a vector of tuples. Each tuple contains:
+    /// - A `ContextVarNode` representing a return variable.
+    /// - A boolean indicating whether this is a real return value (true) or a field of a struct return value (false).
+    ///
+    /// # Errors
+    ///
+    /// Returns a `GraphError` if any graph operations fail.
+    pub fn generate_basic_return_vars(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<Vec<(ContextVarNode, bool)>, GraphError> {
+        Ok(self
+            .result_func_ctx
+            .return_nodes(analyzer)?
+            .iter()
+            .enumerate()
+            .flat_map(|(i, ret)| {
+                let func_name = self
+                    .genesis_func_ctx
+                    .associated_fn(analyzer)
+                    .unwrap()
+                    .loc_specified_name(analyzer)
+                    .unwrap();
+                let mut new_var = ret.var().underlying(analyzer).unwrap().clone();
+                let new_name = format!(
+                    "tmp_{}({func_name}.{i})",
+                    self.target_ctx.new_tmp(analyzer).unwrap(),
+                );
+                new_var.name.clone_from(&new_name);
+                new_var.display_name = new_name.clone();
+                if let Some(mut range) = new_var.ty.take_range() {
+                    range.min = range.min.simplify_minimize(analyzer, arena).unwrap();
+                    range.max = range.max.simplify_maximize(analyzer, arena).unwrap();
+                    //println!("{func_name}.{i}: [{}, {}]", range.min, range.max);
+                    new_var.ty.set_range(range).unwrap();
+                }
+                let new_cvar = ContextVarNode::from(analyzer.add_node(new_var));
+                analyzer.add_edge(
+                    new_cvar,
+                    self.target_ctx,
+                    Edge::Context(ContextEdge::Variable),
+                );
+                self.target_ctx.add_var(new_cvar, analyzer).unwrap();
+                if let Ok(fields) = ret.var().fielded_to_fields(analyzer) {
+                    if !fields.is_empty() {
+                        let mut vars = fields
+                            .iter()
+                            .map(|field| {
+                                let mut new_field_var = field.underlying(analyzer).unwrap().clone();
+                                let new_name =
+                                    format!("{func_name}.{i}.{}", field.name(analyzer).unwrap());
+                                new_field_var.name.clone_from(&new_name);
+                                new_field_var.display_name = new_name;
+                                let new_field =
+                                    ContextVarNode::from(analyzer.add_node(new_field_var));
+                                analyzer.add_edge(
+                                    new_field,
+                                    new_cvar,
+                                    Edge::Context(ContextEdge::AttrAccess("field")),
+                                );
+                                (new_field, false)
+                            })
+                            .collect::<Vec<_>>();
+                        vars.push((new_cvar, true));
+                        vars
+                    } else {
+                        vec![(new_cvar, true)]
+                    }
+                } else {
+                    vec![(new_cvar, true)]
+                }
+            })
+            .collect::<Vec<_>>())
+    }
+
+    /// Updates a variable in the context based on the replacement map.
+    ///
+    /// This method updates the range and dependencies of a given context variable
+    /// using the provided replacement map.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    /// * `replacement_map` - A map of node indices to their replacements.
+    /// * `var` - The context variable to be updated.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` indicating success or a `GraphError` if an error occurs.
+    pub fn update_var(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        replacement_map: &BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>,
+        var: ContextVarNode,
+    ) -> Result<(), GraphError> {
+        let new_name = var.display_name(analyzer).unwrap();
+        tracing::trace!("handling apply range update: {new_name}");
+
+        // update the vars range
+        if let Some(mut range) = var.ty_mut(analyzer)?.take_range() {
+            let mut range: SolcRange = range.take_flattened_range(analyzer, arena).unwrap().into();
+            // use the replacement map
+            replacement_map
+                .iter()
+                .try_for_each(|(replace, replacement)| {
+                    range.replace_dep(*replace, replacement.0.clone(), analyzer, arena)
+                })?;
+            range.cache_eval(analyzer, arena).unwrap();
+            var.set_range(analyzer, range).unwrap();
+        }
+
+        // update the vars dep_on
+        if let Some(ref mut dep_on) = var.underlying_mut(analyzer)?.dep_on {
+            dep_on.iter_mut().for_each(|d| {
+                if let Some((_, r)) = replacement_map.get(&(*d).into()) {
+                    *d = *r
+                }
+            });
+        }
+
+        Ok(())
+    }
+
+    /// Adds dependencies to the target context based on the result function context.
+    ///
+    /// This method processes the context dependencies from the result function context,
+    /// updates them using the replacement map, and adds them to the target context.
+    /// It also checks for unsatisfiable conditions during this process.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    /// * `replacement_map` - A map of node indices to their replacements.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a boolean indicating whether an unsatisfiable condition was encountered,
+    /// or a `GraphError` if an error occurs during the process.
+    pub fn add_deps(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        replacement_map: &BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>,
+    ) -> Result<bool, GraphError> {
+        let mut unsat = false;
+        self.result_func_ctx
+            .ctx_deps(analyzer)?
+            .iter()
+            .try_for_each(|dep| {
+                let new_var = dep.underlying(analyzer)?.clone();
+                let new_cvar = ContextVarNode::from(analyzer.add_node(new_var));
+                self.update_var(analyzer, arena, replacement_map, new_cvar)?;
+                analyzer.add_edge(
+                    new_cvar,
+                    self.target_ctx,
+                    Edge::Context(ContextEdge::Variable),
+                );
+                self.target_ctx.add_ctx_dep(new_cvar, analyzer, arena)?;
+                if let Some(r) = new_cvar.range(analyzer)? {
+                    if let Ok(max) = r.evaled_range_max(analyzer, arena) {
+                        if let Some(conc) = max.maybe_concrete() {
+                            unsat |= matches!(conc.val, Concrete::Bool(false));
+                        }
+                    }
+                    unsat |= r.unsat(analyzer, arena);
+                }
+                Ok(())
+            })?;
+        Ok(unsat)
+    }
+
+    /// Applies the replacement map to update the context and generate return values.
+    ///
+    /// This method processes the replacement map, updates the context variables,
+    /// and generates return values based on the function's mutability.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    /// * `map` - The replacement map containing node replacements.
+    /// * `func_mut` - The mutability of the function being applied.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing an `Option<ExprRet>`. The `Option` is `None` if the
+    /// application results in an unsatisfiable condition, otherwise it contains
+    /// the function's return value(s).
+    ///
+    /// # Errors
+    ///
+    /// Returns a `GraphError` if any graph operations fail during the process.
+    pub fn apply_replacement_map(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        map: &BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>,
+        func_mut: FuncVis,
+    ) -> Result<Option<ExprRet>, GraphError> {
+        let ret_vars = self.generate_basic_return_vars(analyzer, arena)?;
+        ret_vars
+            .iter()
+            .try_for_each(|(ret_var, _)| self.update_var(analyzer, arena, map, *ret_var))?;
+
+        match func_mut {
+            FuncVis::Pure => {
+                if self.add_deps(analyzer, arena, map)? {
+                    return Ok(None);
+                }
+                analyzer.add_completed_pure(true, true, false, self.target_ctx);
+                Ok(Some(ExprRet::Multi(
+                    ret_vars
+                        .into_iter()
+                        .filter_map(|(var, real_ret)| {
+                            if real_ret {
+                                Some(ExprRet::from(var))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                )))
+            }
+            FuncVis::View => {
+                if self.add_deps(analyzer, arena, map)? {
+                    return Ok(None);
+                }
+
+                analyzer.add_completed_view(true, true, false, self.target_ctx);
+
+                Ok(Some(ExprRet::Multi(
+                    ret_vars
+                        .into_iter()
+                        .filter_map(|(var, real_ret)| {
+                            if real_ret {
+                                Some(ExprRet::from(var))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                )))
+            }
+            FuncVis::Mut => {
+                // TODO:
+                todo!("mut")
+            }
+        }
+    }
+
+    /// Applies a function to the given context with the provided inputs.
+    ///
+    /// This method handles the application of a function to a specific context,
+    /// updating the context and generating return values based on the function's
+    /// behavior and mutability.
+    ///
+    /// # Arguments
+    ///
+    /// * `analyzer` - The analyzer backend used for graph operations.
+    /// * `arena` - The range arena for element storage.
+    /// * `inputs` - A slice of `ContextVarNode` representing the function inputs.
+    /// * `loc` - The location information for error reporting.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a boolean indicating whether the application was
+    /// successful (true) or not (false), or a `GraphError` if an error occurred.
+    pub fn apply(
+        &mut self,
+        analyzer: &mut (impl AnalyzerBackend + Variable),
+        arena: &mut RangeArena<Elem<Concrete>>,
+        inputs: &[ContextVarNode],
+        loc: Loc,
+    ) -> Result<bool, GraphError> {
+        let func_mut = self
+            .genesis_func_ctx
+            .associated_fn(analyzer)?
+            .visibility(analyzer)?;
+
+        if func_mut == FuncVis::Mut {
+            return Ok(false);
+        }
+
+        let edges = if self.genesis_func_ctx.underlying(analyzer)?.child.is_some() {
+            self.genesis_func_ctx.successful_edges(analyzer)?
+        } else {
+            vec![self.genesis_func_ctx]
+        };
+        match edges.len() {
+            0 => {
+                // always reverts
+                self.target_ctx.kill(analyzer, loc, KilledKind::Revert)?;
+                Ok(true)
+            }
+            1 => {
+                // single edge
+                self.result_func_ctx = self.genesis_func_ctx;
+                let map = self.generate_replacement_map(analyzer, arena, inputs, func_mut)?;
+                //println!("map: {map:#?}");
+                if let Some(res) = self.apply_replacement_map(analyzer, arena, &map, func_mut)? {
+                    self.target_ctx.push_expr(res, analyzer)?;
+                } else {
+                    // unsat
+                    self.target_ctx.kill(analyzer, loc, KilledKind::Revert)?;
+                }
+                Ok(true)
+            }
+            _ => {
+                // multi-edge
+                let new_forks = self
+                    .target_ctx
+                    .set_apply_forks(loc, edges.clone(), analyzer)
+                    .unwrap();
+                let map = self.generate_replacement_map(analyzer, arena, inputs, func_mut)?;
+                edges.into_iter().zip(new_forks.into_iter()).try_for_each(
+                    |(edge_ctx, new_target)| {
+                        self.target_ctx = new_target;
+                        self.result_func_ctx = edge_ctx;
+                        if let Some(res) =
+                            self.apply_replacement_map(analyzer, arena, &map, func_mut)?
+                        {
+                            self.target_ctx.push_expr(res, analyzer)?;
+                        } else {
+                            // unsat
+                            self.target_ctx
+                                .kill(analyzer, loc, KilledKind::Unreachable)?;
+                        }
+                        Ok(())
+                    },
+                )?;
+                Ok(true)
+            }
+        }
+    }
+}
+
 /// A trait for calling a function
 pub trait FuncApplier:
     GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ApplyStatTracker
 {
+    /// Applies a function to a given context with the provided inputs.
+    ///
+    /// This method is the entry point for function application. It sets up the necessary
+    /// contexts and delegates the actual application process to the `ApplyContexts` struct.
+    ///
+    /// # Arguments
+    ///
+    /// * `arena` - A mutable reference to the `RangeArena` for element storage.
+    /// * `ctx` - The target `ContextNode` where the function will be applied.
+    /// * `func` - The `FunctionNode` representing the function to be applied.
+    /// * `func_inputs` - A slice of `ContextVarNode` representing the function inputs.
+    /// * `loc` - The `Loc` (location) information for error reporting.
+    ///
+    /// # Returns
+    ///
+    /// A `Result` containing a boolean indicating whether the application was successful (true)
+    /// or not (false), or an `ExprErr` if an error occurred during the process.
     #[tracing::instrument(level = "trace", skip_all)]
     fn apply(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         func: FunctionNode,
-        params: &[FunctionParamNode],
         func_inputs: &[ContextVarNode],
-        seen: &mut Vec<FunctionNode>,
+        loc: Loc,
     ) -> Result<bool, ExprErr> {
         tracing::trace!(
             "Trying to apply function: {} onto context {}",
             func.loc_specified_name(self).into_expr_err(loc)?,
             ctx.path(self)
         );
-        // ensure no modifiers (for now)
-        // if pure function:
-        //      grab requirements for context
-        //      grab return node's simplified range
-        //      replace fundamentals with function inputs
-        //      update ctx name in place
-        //
-        match func.visibility(self).into_expr_err(loc)? {
-            FuncVis::Pure => {
-                // pure functions are guaranteed to not require the use of state, so
-                // the only things we care about are function inputs and function outputs
-                if let Some(apply_ctx) = func.maybe_body_ctx(self) {
-                    if apply_ctx
-                        .underlying(self)
-                        .into_expr_err(loc)?
-                        .child
-                        .is_some()
-                    {
-                        tracing::trace!(
-                            "Applying function: {}",
-                            func.name(self).into_expr_err(loc)?
-                        );
-                        let edges = apply_ctx.successful_edges(self).into_expr_err(loc)?;
-                        match edges.len() {
-                            0 => {
-                                ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
-                            }
-                            1 => {
-                                if !self.apply_pure(
-                                    arena,
-                                    loc,
-                                    func,
-                                    params,
-                                    func_inputs,
-                                    apply_ctx,
-                                    edges[0],
-                                    ctx,
-                                    false,
-                                )? {
-                                    ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
-                                }
-                                return Ok(true);
-                            }
-                            2.. => {
-                                tracing::trace!(
-                                    "Branching pure apply function: {}",
-                                    func.name(self).into_expr_err(loc)?
-                                );
-                                // self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                                let new_forks =
-                                    ctx.set_apply_forks(loc, edges.clone(), self).unwrap();
-                                edges.into_iter().zip(new_forks.iter()).try_for_each(
-                                    |(edge, new_fork)| {
-                                        let res = self.apply_pure(
-                                            arena,
-                                            loc,
-                                            func,
-                                            params,
-                                            func_inputs,
-                                            apply_ctx,
-                                            edge,
-                                            *new_fork,
-                                            true,
-                                        )?;
-                                        if !res {
-                                            new_fork
-                                                .kill(self, loc, KilledKind::Unreachable)
-                                                .into_expr_err(loc)?;
-                                            Ok(())
-                                        } else {
-                                            Ok(())
-                                        }
-                                    },
-                                )?;
-                                return Ok(true);
-                            }
-                        }
-                    } else {
-                        tracing::trace!(
-                            "Childless pure apply: {}",
-                            func.name(self).into_expr_err(loc)?
-                        );
-                        let res = self.apply_pure(
-                            arena,
-                            loc,
-                            func,
-                            params,
-                            func_inputs,
-                            apply_ctx,
-                            apply_ctx,
-                            ctx,
-                            false,
-                        )?;
-                        if !res {
-                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
-                        }
-                        return Ok(true);
-                    }
-                } else {
-                    tracing::trace!("Pure function not processed");
-                    if ctx.associated_fn(self) == Ok(func) {
-                        return Ok(false);
-                    }
 
-                    if seen.contains(&func) {
-                        return Ok(false);
-                    }
+        let mut ctxs = ApplyContexts {
+            target_ctx: ctx,
+            genesis_func_ctx: ContextNode(0),
+            result_func_ctx: ContextNode(0),
+        };
 
-                    self.handled_funcs_mut().push(func);
-                    if func.underlying(self).unwrap().body.is_some() {
-                        self.interpret_entry_func(func, arena);
-                    }
-
-                    seen.push(func);
-                    return self.apply(arena, ctx, loc, func, params, func_inputs, seen);
-                }
+        if let Some(apply_ctx) = func.maybe_body_ctx(self) {
+            ctxs.genesis_func_ctx = apply_ctx;
+        } else {
+            if ctx.associated_fn(self) == Ok(func) {
+                return Ok(false);
             }
-            FuncVis::View => {
-                if let Some(body_ctx) = func.maybe_body_ctx(self) {
-                    if body_ctx
-                        .underlying(self)
-                        .into_expr_err(loc)?
-                        .child
-                        .is_some()
-                    {
-                        let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
-                        if edges.len() == 1 {
-                            tracing::trace!(
-                                "View apply function: {}",
-                                func.name(self).into_expr_err(loc)?
-                            );
-                            self.add_completed_view(false, false, false, body_ctx);
-                        } else {
-                            tracing::trace!(
-                                "Branching view apply function: {}",
-                                func.name(self).into_expr_err(loc)?
-                            );
-                            self.add_completed_view(false, false, true, body_ctx);
-                        }
-                    } else {
-                        tracing::trace!(
-                            "Childless view apply function: {}",
-                            func.name(self).into_expr_err(loc)?
-                        );
-                        self.add_completed_view(false, true, false, body_ctx);
-                    }
-                } else {
-                    tracing::trace!("View function not processed");
-                    if ctx.associated_fn(self) == Ok(func) {
-                        return Ok(false);
-                    }
 
-                    if seen.contains(&func) {
-                        return Ok(false);
-                    }
-
-                    self.handled_funcs_mut().push(func);
-                    if func.underlying(self).unwrap().body.is_some() {
-                        self.interpret_entry_func(func, arena);
-                    }
-
-                    seen.push(func);
-                }
+            // if we have handled a function, we should have a body context already
+            if self.handled_funcs().contains(&func) {
+                return Ok(false);
             }
-            FuncVis::Mut => {
-                if let Some(body_ctx) = func.maybe_body_ctx(self) {
-                    if body_ctx
-                        .underlying(self)
-                        .into_expr_err(loc)?
-                        .child
-                        .is_some()
-                    {
-                        let edges = body_ctx.successful_edges(self).into_expr_err(loc)?;
-                        if edges.len() == 1 {
-                            tracing::trace!(
-                                "Mut apply function: {}",
-                                func.name(self).into_expr_err(loc)?
-                            );
-                            self.add_completed_mut(false, false, false, body_ctx);
-                        } else {
-                            tracing::trace!(
-                                "Branching mut apply function: {}",
-                                func.name(self).into_expr_err(loc)?
-                            );
-                            self.add_completed_mut(false, false, true, body_ctx);
-                        }
-                    } else {
-                        tracing::trace!(
-                            "Childless mut apply function: {}",
-                            func.name(self).into_expr_err(loc)?
-                        );
-                        self.add_completed_mut(false, true, false, body_ctx);
-                    }
-                } else {
-                    tracing::trace!("Mut function not processed");
-                    if ctx.associated_fn(self) == Ok(func) {
-                        return Ok(false);
-                    }
 
-                    if seen.contains(&func) {
-                        return Ok(false);
-                    }
+            self.handled_funcs_mut().push(func);
+            if func.underlying(self).unwrap().body.is_some() {
+                self.interpret_entry_func(func, arena);
+            }
 
-                    self.handled_funcs_mut().push(func);
-                    if func.underlying(self).unwrap().body.is_some() {
-                        self.interpret_entry_func(func, arena);
-                    }
-
-                    seen.push(func);
-                }
+            if let Some(body_ctx) = func.maybe_body_ctx(self) {
+                ctxs.genesis_func_ctx = body_ctx;
+            } else {
+                return Ok(false);
             }
         }
 
-        Ok(false)
-    }
-
-    fn apply_pure(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: Loc,
-        func: FunctionNode,
-        params: &[FunctionParamNode],
-        func_inputs: &[ContextVarNode],
-        apply_ctx: ContextNode,
-        resulting_edge: ContextNode,
-        target_ctx: ContextNode,
-        forks: bool,
-    ) -> Result<bool, ExprErr> {
-        // construct remappings for inputs
-        // if applying func a(uint x), map will be <x, (replacement_elem, replacement_idx)
-        //
-        // fucntion a(uint x) returns (uint y) {
-        //    y = x + 5;
-        // }
-        //  y will be returned and relies on x - therefore we need to replace all references of
-        //  x using the replacement map
-        //
-        //  What is produced is a ContextVarNode that's range is like the return of the normal function
-        //  but with x replaced with the input provided
-        let replacement_map = self.basic_inputs_replacement_map(
-            arena,
-            apply_ctx,
-            target_ctx,
-            loc,
-            params,
-            func_inputs,
-        )?;
-        tracing::trace!("applying pure function - replacement map: {replacement_map:#?}");
-        let mut rets: Vec<_> = resulting_edge
-            .return_nodes(self)
-            .into_expr_err(loc)?
-            .iter()
-            .enumerate()
-            .map(|(i, ret)| {
-                let mut new_var = ret.var().underlying(self).unwrap().clone();
-                let new_name = format!(
-                    "tmp_{}({}.{i})",
-                    target_ctx.new_tmp(self).unwrap(),
-                    func.loc_specified_name(self).unwrap()
-                );
-                tracing::trace!("handling apply return: {new_name}");
-                new_var.name.clone_from(&new_name);
-                new_var.display_name = new_name.clone();
-                if let Some(mut range) = new_var.ty.take_range() {
-                    let mut range: SolcRange =
-                        range.take_flattened_range(self, arena).unwrap().into();
-                    tracing::trace!(
-                        "apply return {new_name} target range: [{}, {}]",
-                        range.range_min(),
-                        // .to_range_string(false, self, arena)
-                        // .s,
-                        range.range_max() // .to_range_string(false, self, arena)
-                                          // .s,
-                    );
-                    replacement_map.iter().for_each(|(replace, replacement)| {
-                        range.replace_dep(*replace, replacement.0.clone(), self, arena);
-                    });
-
-                    range.cache_eval(self, arena).unwrap();
-
-                    tracing::trace!(
-                        "apply return {new_name} range: {}",
-                        range.as_dot_str(self, arena)
-                    );
-                    // TODO: change ty here to match ret type
-                    new_var.ty.set_range(range).unwrap();
-                }
-
-                if let Some(ref mut dep_on) = &mut new_var.dep_on {
-                    dep_on.iter_mut().for_each(|d| {
-                        if let Some((_, r)) = replacement_map.get(&(*d).into()) {
-                            *d = *r
-                        }
-                    });
-                }
-
-                let mut new_cvar = ContextVarNode::from(self.add_node(new_var));
-                self.add_edge(new_cvar, target_ctx, Edge::Context(ContextEdge::Variable));
-                target_ctx.add_var(new_cvar, self).unwrap();
-
-                // handle the case where the return node is a struct
-                if let Ok(fields) = ret.var().fielded_to_fields(self) {
-                    if !fields.is_empty() {
-                        fields.iter().for_each(|field| {
-                            let mut new_var = field.underlying(self).unwrap().clone();
-                            let new_name = format!(
-                                "{}.{i}.{}",
-                                func.loc_specified_name(self).unwrap(),
-                                field.name(self).unwrap()
-                            );
-                            new_var.name.clone_from(&new_name);
-                            new_var.display_name = new_name;
-                            if let Some(mut range) = new_var.ty.take_range() {
-                                let mut range: SolcRange =
-                                    range.take_flattened_range(self, arena).unwrap().into();
-                                replacement_map.iter().for_each(|(replace, replacement)| {
-                                    range.replace_dep(*replace, replacement.0.clone(), self, arena);
-                                });
-
-                                range.cache_eval(self, arena).unwrap();
-
-                                new_var.ty.set_range(range).unwrap();
-                            }
-
-                            if let Some(ref mut dep_on) = &mut new_var.dep_on {
-                                dep_on.iter_mut().for_each(|d| {
-                                    if let Some((_, r)) = replacement_map.get(&(*d).into()) {
-                                        *d = *r
-                                    }
-                                });
-                            }
-                            let new_field = ContextVarNode::from(self.add_node(new_var));
-                            self.add_edge(
-                                new_field,
-                                new_cvar,
-                                Edge::Context(ContextEdge::AttrAccess("field")),
-                            );
-                        });
-                    }
-                } else {
-                    let next_cvar = self
-                        .advance_var_in_ctx_forcible(arena, new_cvar, loc, target_ctx, true)
-                        .unwrap();
-                    let casted = Elem::Expr(RangeExpr::new(
-                        Elem::from(new_cvar),
-                        RangeOp::Cast,
-                        Elem::from(ret.var()),
-                    ));
-                    next_cvar
-                        .set_range_min(self, arena, casted.clone())
-                        .unwrap();
-                    next_cvar.set_range_max(self, arena, casted).unwrap();
-
-                    new_cvar = next_cvar;
-                }
-
-                ExprRet::Single(new_cvar.latest_version(self).into())
-            })
-            .collect();
-
-        let mut unsat = false;
-
-        resulting_edge
-            .ctx_deps(self)
-            .into_expr_err(loc)?
-            .iter()
-            .try_for_each(|dep| {
-                let mut new_var = dep.underlying(self)?.clone();
-                if let Some(mut range) = new_var.ty.take_range() {
-                    // let mut range: SolcRange =
-                    // range.take_flattened_range(self).unwrap().into();
-                    let mut range: SolcRange =
-                        range.flattened_range(self, arena)?.into_owned().into();
-                    replacement_map.iter().for_each(|(replace, replacement)| {
-                        range.replace_dep(*replace, replacement.0.clone(), self, arena);
-                    });
-
-                    range.cache_eval(self, arena)?;
-                    new_var.ty.set_range(range)?;
-                }
-
-                if let Some(ref mut dep_on) = &mut new_var.dep_on {
-                    dep_on.iter_mut().for_each(|d| {
-                        if let Some((_, r)) = replacement_map.get(&(*d).into()) {
-                            *d = *r
-                        }
-                    });
-                }
-                let new_cvar = ContextVarNode::from(self.add_node(new_var));
-
-                if new_cvar.is_const(self, arena)?
-                    && new_cvar.evaled_range_min(self, arena)?
-                        == Some(Elem::from(Concrete::from(false)))
-                {
-                    unsat = true;
-                }
-                self.add_edge(new_cvar, target_ctx, Edge::Context(ContextEdge::Variable));
-                target_ctx.add_var(new_cvar, self)?;
-                target_ctx.add_ctx_dep(new_cvar, self, arena)
-            })
-            .into_expr_err(loc)?;
-
-        if unsat {
-            return Ok(false);
-        }
-
-        #[allow(clippy::unnecessary_to_owned)]
-        func.returns(arena, self).into_iter().for_each(|ret| {
-            if let Some(var) =
-                ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())
-            {
-                let cvar = self.add_node(var);
-                target_ctx.add_var(cvar.into(), self).unwrap();
-                self.add_edge(cvar, target_ctx, Edge::Context(ContextEdge::Variable));
-                rets.push(ExprRet::Single(cvar));
-            }
-        });
-
-        let new_path = format!(
-            "{}.{}.resume{{ {} }}",
-            target_ctx.path(self),
-            resulting_edge.path(self),
-            target_ctx.associated_fn_name(self).unwrap()
-        );
-        let underlying_mut = target_ctx.underlying_mut(self).into_expr_err(loc)?;
-        underlying_mut.path = new_path;
-
-        target_ctx
-            .propogate_applied(func, self)
-            .into_expr_err(loc)?;
-        if let Some(body) = func.maybe_body_ctx(self) {
-            for app in body.underlying(self).into_expr_err(loc)?.applies.clone() {
-                target_ctx.propogate_applied(app, self).into_expr_err(loc)?;
-            }
-        }
-
-        target_ctx
-            .push_expr(ExprRet::Multi(rets), self)
-            .into_expr_err(loc)?;
-        self.add_completed_pure(true, false, forks, resulting_edge);
-        Ok(true)
-    }
-
-    fn basic_inputs_replacement_map(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        apply_ctx: ContextNode,
-        target_ctx: ContextNode,
-        loc: Loc,
-        params: &[FunctionParamNode],
-        func_inputs: &[ContextVarNode],
-    ) -> Result<BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)>, ExprErr> {
-        let inputs = apply_ctx.input_variables(self);
-        let mut replacement_map: BTreeMap<NodeIdx, (Elem<Concrete>, ContextVarNode)> =
-            BTreeMap::default();
-        params
-            .iter()
-            .zip(func_inputs.iter())
-            .try_for_each(|(param, func_input)| {
-                if let Some(name) = param.maybe_name(self).into_expr_err(loc)? {
-                    let mut new_cvar = func_input
-                        .latest_version_or_inherited_in_ctx(apply_ctx, self)
-                        .underlying(self)
-                        .into_expr_err(loc)?
-                        .clone();
-                    new_cvar.loc = Some(param.loc(self).unwrap());
-                    new_cvar.is_tmp = false;
-                    new_cvar.storage = if let Some(StorageLocation::Storage(_)) =
-                        param.underlying(self).unwrap().storage
-                    {
-                        new_cvar.storage
-                    } else {
-                        None
-                    };
-
-                    let replacement = ContextVarNode::from(self.add_node(new_cvar));
-
-                    self.add_edge(
-                        replacement,
-                        target_ctx,
-                        Edge::Context(ContextEdge::Variable),
-                    );
-                    target_ctx.add_var(replacement, self).unwrap();
-
-                    if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap()) {
-                        if !replacement.ty_eq_ty(&param_ty, self).into_expr_err(loc)? {
-                            replacement
-                                .cast_from_ty(param_ty, self, arena)
-                                .into_expr_err(loc)?;
-                        }
-                    }
-
-                    if let Some(_len_var) = replacement.array_to_len_var(self) {
-                        // bring the length variable along as well
-                        self.get_length(arena, apply_ctx, *func_input, false, loc)
-                            .unwrap();
-                    }
-
-                    if let (Some(r), Some(r2)) =
-                        (replacement.range(self).unwrap(), param.range(self).unwrap())
-                    {
-                        let new_min = r.range_min().into_owned().cast(r2.range_min().into_owned());
-                        let new_max = r.range_max().into_owned().cast(r2.range_max().into_owned());
-                        replacement
-                            .latest_version_or_inherited_in_ctx(apply_ctx, self)
-                            .try_set_range_min(self, arena, new_min)
-                            .into_expr_err(loc)?;
-                        replacement
-                            .latest_version_or_inherited_in_ctx(apply_ctx, self)
-                            .try_set_range_max(self, arena, new_max)
-                            .into_expr_err(loc)?;
-                        replacement
-                            .latest_version_or_inherited_in_ctx(apply_ctx, self)
-                            .try_set_range_exclusions(self, r.exclusions)
-                            .into_expr_err(loc)?;
-                    }
-
-                    let Some(correct_input) = inputs
-                        .iter()
-                        .find(|input| input.name(self).unwrap() == name)
-                    else {
-                        return Err(ExprErr::InvalidFunctionInput(
-                            loc,
-                            "Could not match input to parameter".to_string(),
-                        ));
-                    };
-
-                    let target_fields = correct_input.fielded_to_fields(self).into_expr_err(loc)?;
-                    let replacement_fields =
-                        func_input.fielded_to_fields(self).into_expr_err(loc)?;
-                    let match_field =
-                        |this: &Self,
-                         target_field: ContextVarNode,
-                         replacement_fields: &[ContextVarNode]|
-                         -> Option<(ContextVarNode, ContextVarNode)> {
-                            let target_full_name = target_field.name(this).clone().unwrap();
-                            let target_field_name = target_full_name
-                                .split('.')
-                                .collect::<Vec<_>>()
-                                .last()
-                                .cloned()
-                                .unwrap();
-                            let replacement_field =
-                                replacement_fields.iter().find(|rep_field| {
-                                    let replacement_full_name = rep_field.name(this).unwrap();
-                                    let replacement_field_name = replacement_full_name
-                                        .split('.')
-                                        .collect::<Vec<_>>()
-                                        .last()
-                                        .cloned()
-                                        .unwrap();
-                                    replacement_field_name == target_field_name
-                                })?;
-                            Some((target_field, *replacement_field))
-                        };
-
-                    let mut struct_stack = target_fields
-                        .into_iter()
-                        .filter_map(|i| match_field(self, i, &replacement_fields[..]))
-                        .collect::<Vec<_>>();
-
-                    while let Some((target_field, replacement_field)) = struct_stack.pop() {
-                        let mut replacement_field_as_elem = Elem::from(replacement_field);
-                        replacement_field_as_elem.arenaize(self, arena).unwrap();
-                        let to_replace = target_field.next_version(self).unwrap_or(target_field);
-                        replacement_map.insert(
-                            to_replace.0.into(),
-                            (replacement_field_as_elem.clone(), replacement_field),
-                        );
-
-                        let target_sub_fields =
-                            target_field.fielded_to_fields(self).into_expr_err(loc)?;
-                        let replacement_sub_fields = replacement_field
-                            .fielded_to_fields(self)
-                            .into_expr_err(loc)?;
-                        let subs = target_sub_fields
-                            .into_iter()
-                            .filter_map(|i| match_field(self, i, &replacement_sub_fields[..]))
-                            .collect::<Vec<_>>();
-                        struct_stack.extend(subs);
-                    }
-
-                    let mut replacement_as_elem = Elem::from(replacement);
-                    replacement_as_elem
-                        .arenaize(self, arena)
-                        .into_expr_err(loc)?;
-
-                    // if let Some(next) = correct_input.next_version(self) {
-                    //     replacement_map
-                    //         .insert(next.0.into(), (replacement_as_elem.clone(), replacement));
-                    // }
-                    replacement_map
-                        .insert(correct_input.0.into(), (replacement_as_elem, replacement));
-                }
-                Ok(())
-            })?;
-        Ok(replacement_map)
+        ctxs.apply(self, arena, func_inputs, loc).into_expr_err(loc)
     }
 }
 

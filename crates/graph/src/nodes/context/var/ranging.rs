@@ -226,7 +226,7 @@ impl ContextVarNode {
         }
     }
 
-    // #[tracing::instrument(level = "trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_min(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -261,7 +261,7 @@ impl ContextVarNode {
             self.range_min(analyzer)
                 .unwrap_or_default()
                 .unwrap_or_default(),
-            new_min.recurse_dearenaize(analyzer, arena),
+            new_min.recurse_dearenaize(arena),
             new_min,
             new_min.recursive_dependent_on(analyzer, arena)?
         );
@@ -284,7 +284,7 @@ impl ContextVarNode {
         Ok(())
     }
 
-    // #[tracing::instrument(level = "trace", skip_all)]
+    #[tracing::instrument(level = "trace", skip_all)]
     pub fn set_range_max(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -302,16 +302,17 @@ impl ContextVarNode {
         }
 
         new_max.arenaize(analyzer, arena)?;
-        // if let Some(idx) = arena.idx(&Elem::from(*self)) {
-        //     arena.ranges[idx].uncache();
-        // }
 
         tracing::trace!(
-            "setting range maximum: {:?}, {}, current: {}, new: {}",
-            self,
+            "setting range maximum: {} (node idx: {}), current:{}, new_min:{} ({}), deps: {:#?}",
             self.display_name(analyzer)?,
-            self.ref_range(analyzer)?.unwrap().range_max(), // .unwrap()
-            new_max
+            self.0,
+            self.range_max(analyzer)
+                .unwrap_or_default()
+                .unwrap_or_default(),
+            new_max.recurse_dearenaize(arena),
+            new_max,
+            new_max.recursive_dependent_on(analyzer, arena)?
         );
 
         if self.is_concrete(analyzer)? {
@@ -480,16 +481,9 @@ impl ContextVarNode {
         }
     }
 
-    pub fn sol_delete_range(
-        &mut self,
-        analyzer: &mut impl GraphBackend,
-        arena: &mut RangeArena<Elem<Concrete>>,
-    ) -> Result<(), GraphError> {
+    pub fn sol_delete_range(&mut self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
         let ty = self.ty(analyzer)?;
         if let Some(delete_range) = ty.delete_range_result(analyzer)? {
-            // if let Some(idx) = arena.idx(&Elem::from(*self)) {
-            //     arena.ranges[idx].uncache();
-            // }
             self.set_range(analyzer, delete_range)?;
         }
         Ok(())

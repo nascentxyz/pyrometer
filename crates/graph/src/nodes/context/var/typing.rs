@@ -86,14 +86,14 @@ impl ContextVarNode {
     pub fn is_storage(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(
             self.underlying(analyzer)?.storage,
-            Some(StorageLocation::Storage(..))
+            Some(StorageLocation::Storage(..)) | Some(StorageLocation::StoragePtr(..))
         ) || self.is_attr_or_index_of_storage(analyzer))
     }
 
     pub fn is_memory(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(matches!(
             self.underlying(analyzer)?.storage,
-            Some(StorageLocation::Memory(..))
+            Some(StorageLocation::Memory(..)) | Some(StorageLocation::MemoryPtr(..))
         ))
     }
 
@@ -336,13 +336,7 @@ impl ContextVarNode {
         Ok(self
             .dependent_on(analyzer, true)?
             .iter()
-            .any(|dependent_on| {
-                if let Ok(t) = dependent_on.is_fundamental(analyzer) {
-                    t
-                } else {
-                    false
-                }
-            }))
+            .any(|dependent_on| dependent_on.is_fundamental(analyzer).unwrap_or_default()))
     }
 
     pub fn is_calldata_input(&self, analyzer: &impl GraphBackend) -> bool {
@@ -475,10 +469,22 @@ impl ContextVarNode {
         ctx: ContextNode,
         loc: Loc,
     ) -> Result<Self, GraphError> {
-        let new_underlying = self
+        let mut new_underlying = self
             .underlying(analyzer)?
             .clone()
             .as_tmp(analyzer, ctx, loc)?;
+
+        if matches!(
+            new_underlying.storage,
+            Some(StorageLocation::Storage(..)) | Some(StorageLocation::StoragePtr(..))
+        ) {
+            if let Some(ref mut deps) = new_underlying.dep_on {
+                deps.push(*self);
+            } else {
+                new_underlying.dep_on = Some(vec![*self]);
+            }
+        }
+        // new_underlying.storage = None;
         let new_tmp = ContextVarNode::from(analyzer.add_node(new_underlying));
 
         if new_tmp.is_fielded(analyzer)? {
@@ -495,6 +501,8 @@ impl ContextVarNode {
         } else {
             new_tmp.set_range(analyzer, From::from(Elem::from(*self)))?;
         }
+        ctx.add_var(new_tmp, analyzer)?;
+        analyzer.add_edge(new_tmp, ctx, Edge::Context(ContextEdge::Variable));
 
         Ok(new_tmp)
     }

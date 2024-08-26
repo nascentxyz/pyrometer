@@ -106,7 +106,7 @@ impl ReportDisplay for VarBoundAnalysis {
 
     fn print_reports(
         &self,
-        mut src: &mut impl Cache<String>,
+        mut src: impl Cache<String>,
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
@@ -118,12 +118,12 @@ impl ReportDisplay for VarBoundAnalysis {
 
     fn eprint_reports(
         &self,
-        mut src: &mut impl Cache<String>,
+        mut src: impl Cache<String>,
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) {
         let reports = self.reports(analyzer, arena);
-        reports.into_iter().for_each(|report| {
+        reports.iter().for_each(|report| {
             report.eprint(&mut src).unwrap();
         });
     }

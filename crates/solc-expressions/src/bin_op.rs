@@ -1,4 +1,4 @@
-use crate::{require::Require, variable::Variable, ErrType, SolcError};
+use crate::{require::Require, variable::Variable, Assign, ErrType, SolcError};
 use shared::GraphError;
 
 use graph::{
@@ -177,7 +177,9 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             underlying.tmp_of = Some(TmpConstruction::new(lhs_cvar, op, Some(rhs_cvar)));
 
             if let Some(ref mut dep_on) = underlying.dep_on {
-                dep_on.push(rhs_cvar)
+                dep_on.push(rhs_cvar);
+                dep_on.sort();
+                dep_on.dedup();
             } else {
                 new.set_dependent_on(self).into_expr_err(loc)?;
             }
@@ -221,6 +223,10 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
                     .into(),
             )),
         ));
+
+        let mut e = expr.clone();
+        e.arenaize(self, arena).unwrap();
+
         let new_lhs = new_lhs.latest_version_or_inherited_in_ctx(ctx, self);
         new_lhs
             .set_range_min(self, arena, expr.clone())
@@ -228,7 +234,6 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         new_lhs
             .set_range_max(self, arena, expr)
             .into_expr_err(loc)?;
-
         // to prevent some recursive referencing, forcibly increase lhs_cvar
         self.advance_var_in_ctx_forcible(
             arena,
@@ -236,6 +241,21 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             loc,
             ctx,
             true,
+        )?;
+
+        self.maybe_assign_to_parent_array(
+            arena,
+            ctx,
+            rhs_cvar,
+            new_rhs.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
+        )?;
+        self.maybe_assign_to_parent_array(
+            arena,
+            ctx,
+            lhs_cvar,
+            new_lhs.latest_version_or_inherited_in_ctx(ctx, self),
+            loc,
         )?;
 
         if !unchecked {

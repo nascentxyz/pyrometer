@@ -389,13 +389,15 @@ impl SolcSolver for BruteBinSearchSolver {
         if atomic_solves.len() == self.atomics.len() {
             return Ok(AtomicSolveStatus::Sat(atomic_solves));
         } else {
-            atomic_solves.iter().for_each(|(atomic, val)| {
-                self.intermediate_ranges.iter_mut().for_each(|(_dep, r)| {
-                    atomic.idxs.iter().for_each(|idx| {
-                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
-                    });
-                });
-            });
+            atomic_solves.iter().try_for_each(|(atomic, val)| {
+                self.intermediate_ranges
+                    .iter_mut()
+                    .try_for_each(|(_dep, r)| {
+                        atomic.idxs.iter().try_for_each(|idx| {
+                            r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
+                        })
+                    })
+            })?;
 
             atomic_solves.clone().into_iter().for_each(|(atomic, val)| {
                 self.intermediate_atomic_ranges.insert(
@@ -433,18 +435,22 @@ impl SolcSolver for BruteBinSearchSolver {
             if mapping.len() == self.intermediate_atomic_ranges.len() {
                 let all_good = self.ranges.iter().all(|(_dep, range)| {
                     let mut new_range = range.clone();
-                    self.intermediate_atomic_ranges
-                        .iter()
-                        .for_each(|(atomic, range)| {
-                            atomic.idxs.iter().for_each(|idx| {
-                                new_range.replace_dep(
-                                    idx.0.into(),
-                                    range.min.clone(),
-                                    analyzer,
-                                    arena,
-                                );
+                    let res =
+                        self.intermediate_atomic_ranges
+                            .iter()
+                            .try_for_each(|(atomic, range)| {
+                                atomic.idxs.iter().try_for_each(|idx| {
+                                    new_range.replace_dep(
+                                        idx.0.into(),
+                                        range.min.clone(),
+                                        analyzer,
+                                        arena,
+                                    )
+                                })
                             });
-                        });
+                    if res.is_err() {
+                        return false;
+                    }
                     new_range.cache_eval(analyzer, arena).unwrap();
                     new_range.sat(analyzer, arena)
                 });
@@ -730,13 +736,15 @@ impl SolcSolver for BruteBinSearchSolver {
                 }
             }
 
-            atomic_solves.iter().for_each(|(atomic, val)| {
-                this.intermediate_ranges.iter_mut().for_each(|(_dep, r)| {
-                    atomic.idxs.iter().for_each(|idx| {
-                        r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
-                    });
-                });
-            });
+            atomic_solves.iter().try_for_each(|(atomic, val)| {
+                this.intermediate_ranges
+                    .iter_mut()
+                    .try_for_each(|(_dep, r)| {
+                        atomic.idxs.iter().try_for_each(|idx| {
+                            r.replace_dep(idx.0.into(), Elem::from(val.clone()), analyzer, arena)
+                        })
+                    })
+            })?;
 
             atomic_solves.clone().into_iter().for_each(|(atomic, val)| {
                 this.intermediate_atomic_ranges.insert(
@@ -776,9 +784,9 @@ impl SolcSolver for BruteBinSearchSolver {
                 this.atomics[solved_for_idx]
                     .idxs
                     .iter()
-                    .for_each(|atomic_alias| {
-                        new_range.replace_dep(atomic_alias.0.into(), conc.clone(), analyzer, arena);
-                    });
+                    .try_for_each(|atomic_alias| {
+                        new_range.replace_dep(atomic_alias.0.into(), conc.clone(), analyzer, arena)
+                    })?;
                 new_range.cache_eval(analyzer, arena)?;
 
                 if new_range.unsat(analyzer, arena) {

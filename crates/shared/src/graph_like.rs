@@ -42,7 +42,7 @@ pub trait GraphLike {
     /// Add a node to the graph
     fn add_node(&mut self, node: impl Into<Self::Node>) -> NodeIdx {
         let res = self.graph_mut().add_node(node.into());
-        // if res.index() == 64 {
+        // if res.index() == 53 {
         //     panic!("here");
         // }
         self.mark_dirty(res);

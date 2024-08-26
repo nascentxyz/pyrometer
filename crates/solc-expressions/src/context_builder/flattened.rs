@@ -21,7 +21,7 @@ use graph::{
 };
 use shared::{
     post_to_site, string_to_static, ElseOrDefault, ExprErr, ExprFlag, FlatExpr, FlatYulExpr,
-    FuncStat, GraphError, IfElseChain, IntoExprErr, LocStat, NodeIdx, RangeArena, USE_DEBUG_SITE,
+    GraphError, IfElseChain, IntoExprErr, NodeIdx, RangeArena, USE_DEBUG_SITE,
 };
 
 use alloy_primitives::U256;
@@ -329,10 +329,6 @@ pub trait Flatten:
                 self.push_expr(FlatExpr::Return(*loc, maybe_ret_expr.is_some()));
             }
             Revert(loc, maybe_err_path, exprs) => {
-                // println!(
-                //     "err path? {maybe_err_path:?}, {:#?}",
-                //     exprs.iter().map(|i| i.to_string()).collect::<Vec<_>>()
-                // );
                 exprs.iter().rev().for_each(|expr| {
                     self.traverse_expression(expr, unchecked);
                 });
@@ -1340,6 +1336,7 @@ pub trait Flatten:
         }
     }
 
+    #[inline(never)]
     fn interpret_entry_func(&mut self, func: FunctionNode, arena: &mut RangeArena<Elem<Concrete>>) {
         let t0 = std::time::Instant::now();
         let loc = func
@@ -1407,12 +1404,17 @@ pub trait Flatten:
         }
     }
 
+    #[tracing::instrument(level = "trace", skip_all)]
     fn end(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         stack: &mut Vec<FlatExpr>,
         ctx: ContextNode,
     ) -> Result<(), ExprErr> {
+        if !ctx.return_nodes(self).unwrap().is_empty() {
+            return Ok(());
+        }
+
         let mut loc = None;
         let mut stack_rev_iter = stack.iter().rev();
         let mut loccer = stack_rev_iter.next();
@@ -1421,6 +1423,7 @@ pub trait Flatten:
             loccer = stack_rev_iter.next();
         }
         let loc = loc.unwrap_or(ctx.underlying(self).unwrap().loc);
+
         let fun = ctx.associated_fn(self).into_expr_err(loc)?;
         let vars = if ctx.return_nodes(self).unwrap().is_empty() {
             ExprRet::Multi(
@@ -1866,7 +1869,7 @@ pub trait Flatten:
                 let mut new_var = self
                     .advance_var_in_ctx(arena, cvar.into(), loc, ctx)
                     .unwrap();
-                new_var.sol_delete_range(self, arena).into_expr_err(loc)
+                new_var.sol_delete_range(self).into_expr_err(loc)
             }
             ExprRet::Multi(inner) => inner
                 .into_iter()
@@ -1905,7 +1908,7 @@ pub trait Flatten:
             unreachable!()
         };
         if let Some(cmd) = self.test_string_literal(cmd_str) {
-            self.run_test_command(arena, ctx, cmd, loc);
+            self.run_test_command(arena, ctx, cmd, loc)?;
         }
         Ok(())
     }
@@ -2318,12 +2321,10 @@ pub trait Flatten:
 
         match (true_killed, false_killed) {
             (true, true) => {
-                // println!("BOTH KILLED");
                 // both have been killed, delete the child and dont process the bodies
                 ctx.delete_child(self).into_expr_err(loc)?;
             }
             (true, false) => {
-                // println!("TRUE KILLED");
                 // the true context has been killed, delete child, process the false fork expression
                 // in the parent context and parse the false body
                 ctx.delete_child(self).into_expr_err(loc)?;
@@ -2958,8 +2959,6 @@ pub trait Flatten:
             }
             _ => {}
         };
-
-        // println!("TRY CATCH: {try_catch}");
 
         let mut func_and_inputs = ctx
             .pop_n_latest_exprs(n + 1 + call_block_inputs, loc, self)

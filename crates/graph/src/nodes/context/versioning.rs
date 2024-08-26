@@ -52,22 +52,7 @@ impl ContextNode {
                 return Ok(Some(ret));
             }
         }
-
-        if let Some(parent) = self.underlying(analyzer)?.parent_ctx() {
-            if parent.associated_fn(analyzer)? == associated_fn {
-                Ok(Some(parent))
-            } else if let Some(mod_state) = &parent.underlying(analyzer)?.modifier_state {
-                if mod_state.parent_fn == associated_fn {
-                    Ok(Some(parent))
-                } else {
-                    parent.ancestor_in_fn(analyzer, associated_fn)
-                }
-            } else {
-                parent.ancestor_in_fn(analyzer, associated_fn)
-            }
-        } else {
-            Ok(None)
-        }
+        Ok(None)
     }
 
     /// Get the first ancestor context that is in the same function
@@ -347,7 +332,6 @@ impl ContextNode {
 
         for _ in 0..end_worlds.len().saturating_sub(1) {
             let curr = stack.pop_front().unwrap();
-
             let left_subctx = Context::add_subctx(
                 SubContextKind::Fork {
                     parent_ctx: curr,

@@ -107,7 +107,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
             loc: Some(loc),
             name,
             display_name: array.display_name(self).into_expr_err(loc)? + ".length",
-            storage: array.storage(self).into_expr_err(loc)?.clone(),
+            storage: *array.storage(self).into_expr_err(loc)?,
             is_tmp: false,
             tmp_of: None,
             dep_on: None,

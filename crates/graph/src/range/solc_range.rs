@@ -120,21 +120,24 @@ impl SolcRange {
         replacement: Elem<Concrete>,
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
-    ) {
+    ) -> Result<(), GraphError> {
+        let replacement_min = replacement.simplify_minimize(analyzer, arena)?;
+        let replacement_max = replacement.simplify_maximize(analyzer, arena)?;
         if let Some(ref mut flattened) = &mut self.flattened {
             flattened
                 .min
-                .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+                .replace_dep(to_replace, replacement_min.clone(), analyzer, arena);
             flattened
                 .max
-                .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+                .replace_dep(to_replace, replacement_max.clone(), analyzer, arena);
         }
         self.min
-            .replace_dep(to_replace, replacement.clone(), analyzer, arena);
+            .replace_dep(to_replace, replacement_min, analyzer, arena);
         self.max
-            .replace_dep(to_replace, replacement, analyzer, arena);
+            .replace_dep(to_replace, replacement_max, analyzer, arena);
         self.min_cached = None;
         self.max_cached = None;
+        Ok(())
     }
 
     pub fn is_const(
@@ -642,7 +645,10 @@ impl Range<Concrete> for SolcRange {
         analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Self::ElemTy, GraphError> {
-        tracing::trace!("flattening min");
+        tracing::trace!(
+            "flattening min: {:?}",
+            self.range_min().recurse_dearenaize(arena)
+        );
         let flattened = self.range_min().flatten(false, analyzer, arena)?;
         tracing::trace!("simplifying flattened min");
         flattened.simplify_minimize(analyzer, arena)

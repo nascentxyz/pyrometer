@@ -63,18 +63,26 @@ impl ContextNode {
         Ok(())
     }
 
+    pub fn add_storage_var(
+        &self,
+        var: ContextVarNode,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<(), GraphError> {
+        if var.is_storage(analyzer)? {
+            let name = var.name(analyzer)?;
+            let vars = &mut self.underlying_mut(analyzer)?.cache.storage_vars;
+            vars.insert(name, var);
+        }
+        Ok(())
+    }
+
     /// Add a variable to this context
     pub fn add_var(
         &self,
         var: ContextVarNode,
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
-        // var.cache_range(analyzer)?;
-        if var.is_storage(analyzer)? {
-            let name = var.name(analyzer)?;
-            let vars = &mut self.underlying_mut(analyzer)?.cache.storage_vars;
-            vars.insert(name, var);
-        }
+        self.add_storage_var(var, analyzer)?;
 
         if var.underlying(analyzer)?.is_tmp {
             let name = var.display_name(analyzer)?;

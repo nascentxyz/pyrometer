@@ -9,17 +9,61 @@ use crate::{
     },
     AnalyzerBackend, AsDotStr, GraphBackend, Node,
 };
-use shared::{GraphError, RangeArena};
-
-use shared::NodeIdx;
+use shared::{GraphError, NodeIdx, RangeArena};
 
 use alloy_primitives::{Address, U256};
 
-#[derive(Debug, Clone, Eq, Hash, Ord, PartialOrd)]
+use std::hash::{Hash, Hasher};
+
+#[derive(Debug, Clone, Eq, Ord, PartialOrd)]
 pub enum VarType {
     User(TypeNode, Option<SolcRange>),
     BuiltIn(BuiltInNode, Option<SolcRange>),
     Concrete(ConcreteNode),
+}
+
+impl Hash for VarType {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match self {
+            VarType::User(tn, maybe_r) => {
+                tn.hash(state);
+                if let Some(r) = maybe_r {
+                    if r.min_cached.is_some() {
+                        r.min_cached.hash(state)
+                    } else {
+                        r.min.hash(state)
+                    };
+                    if r.max_cached.is_some() {
+                        r.max_cached.hash(state)
+                    } else {
+                        r.max.hash(state)
+                    };
+                } else {
+                    maybe_r.hash(state);
+                }
+            }
+            VarType::BuiltIn(bn, maybe_r) => {
+                bn.hash(state);
+                if let Some(r) = maybe_r {
+                    if r.min_cached.is_some() {
+                        r.min_cached.hash(state)
+                    } else {
+                        r.min.hash(state)
+                    };
+                    if r.max_cached.is_some() {
+                        r.max_cached.hash(state)
+                    } else {
+                        r.max.hash(state)
+                    };
+                } else {
+                    maybe_r.hash(state);
+                }
+            }
+            VarType::Concrete(cn) => {
+                cn.hash(state);
+            }
+        }
+    }
 }
 
 impl PartialEq for VarType {

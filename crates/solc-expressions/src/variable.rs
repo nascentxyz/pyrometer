@@ -2,7 +2,7 @@ use crate::{assign::Assign, env::Env, ContextBuilder};
 
 use graph::{
     elem::{Elem, RangeElem},
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, VarNode},
+    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 use shared::{ExprErr, GraphError, IntoExprErr, NodeIdx, RangeArena};
@@ -227,6 +227,32 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 .into_expr_err(ident.loc)?;
             Ok(())
         }
+    }
+
+    fn contract_variable(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        contract: ContractNode,
+        name: String,
+        loc: Loc,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        let mut all_storage_vars_tys = contract.all_storage_vars(self);
+        all_storage_vars_tys.sort();
+        all_storage_vars_tys.dedup();
+        let Some(varnode) = all_storage_vars_tys
+            .iter()
+            .find(|var| var.name(self).expect("var had no name") == name)
+        else {
+            return Ok(None);
+        };
+
+        let var = ContextVar::from_var_node(self, arena, loc, *varnode)?;
+        let cvar = ContextVarNode::from(self.add_node(var));
+        // only add it as a storage var
+        ctx.add_storage_var(cvar, self)?;
+        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+        Ok(Some(cvar))
     }
 
     fn disambiguate(
@@ -579,8 +605,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             .clone();
         // get the old context
         let new_cvarnode;
-
-        let mut created_new = true;
+        let mut created_new = false;
         'a: {
             if let Some(old_ctx) = cvar_node.maybe_ctx(self) {
                 if !force {
@@ -598,11 +623,11 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         if prev_version.eq_ignore_loc(curr_version) && old_ctx == ctx {
                             // there was no change in the current context, just give them the current variable
                             new_cvarnode = cvar_node.into();
-                            created_new = false;
                             break 'a;
                         }
                     }
                 }
+                created_new = true;
 
                 // we ignore any errors here
                 new_cvar.is_fundamental = None;
@@ -673,6 +698,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
                 }
             } else {
+                created_new = true;
                 new_cvar.loc = Some(loc);
                 new_cvarnode = self.add_node(new_cvar);
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
@@ -680,6 +706,26 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         }
 
         self.mark_dirty(new_cvarnode);
+        if !created_new {
+            // clear arena cache
+            if let Some(mut range) = ContextVarNode::from(new_cvarnode)
+                .ty_mut(self)
+                .unwrap()
+                .take_range()
+            {
+                range.min_cached = None;
+                range.max_cached = None;
+                range.flattened = None;
+                ContextVarNode::from(new_cvarnode)
+                    .set_range(self, range)
+                    .into_expr_err(loc)?;
+            }
+            let mut elem = Elem::from(new_cvarnode);
+            elem.arenaize(self, arena).into_expr_err(loc)?;
+            let (mut a, idx) = elem.dearenaize(arena);
+            a.uncache();
+            elem.rearenaize(a, idx, arena);
+        }
         // if !cvar_node.is_fielded(self).into_expr_err(loc)?
         //     && !cvar_node.is_concrete(self).into_expr_err(loc)?
         //     && created_new
@@ -698,8 +744,8 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
         let nmin = ContextVarNode::from(new_cvarnode).evaled_range_min(self, arena);
         let nmax = ContextVarNode::from(new_cvarnode).evaled_range_max(self, arena);
-        let omin = ContextVarNode::from(cvar_node).evaled_range_min(self, arena);
-        let omax = ContextVarNode::from(cvar_node).evaled_range_max(self, arena);
+        let omin = cvar_node.evaled_range_min(self, arena);
+        let omax = cvar_node.evaled_range_max(self, arena);
         debug_assert!(nmin == omin);
         debug_assert!(nmax == omax);
 

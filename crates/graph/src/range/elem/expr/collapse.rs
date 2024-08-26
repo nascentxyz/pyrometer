@@ -58,6 +58,10 @@ pub fn collapse(
     arena: &mut RangeArena<Elem<Concrete>>,
 ) -> MaybeCollapsed {
     tracing::trace!("collapsing: {l} {op} {r}");
+    return MaybeCollapsed::Not(l, op, r);
+    if op == RangeOp::Assign {
+        return MaybeCollapsed::Collapsed(r);
+    }
 
     let l = if let Elem::Expr(e) = l {
         match collapse(*e.lhs, e.op, *e.rhs, arena) {
@@ -80,6 +84,7 @@ pub fn collapse(
     };
 
     if let Some(e) = ident_rules(&l, op, &r, arena) {
+        tracing::trace!("ident rules collapse: {e}");
         return MaybeCollapsed::Collapsed(e);
     }
 
@@ -608,7 +613,10 @@ pub fn collapse(
             }
             _ => MaybeCollapsed::Not(real, op, Elem::Null),
         },
-        (l, r) => return MaybeCollapsed::Not(l, op, r),
+        (l, r) => {
+            tracing::trace!("not collapsed");
+            return MaybeCollapsed::Not(l, op, r);
+        }
     };
 
     match res {
