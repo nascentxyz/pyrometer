@@ -1,9 +1,13 @@
 use crate::{assign::Assign, func_call::helper::CallerHelper};
+use graph::nodes::{Builtin, Fielded};
 
 use graph::{
     elem::*,
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet, StructNode},
-    AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
+    nodes::{
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ErrorNode, ExprRet,
+        StructNode,
+    },
+    AnalyzerBackend, ContextEdge, Edge, Node, VarType,
 };
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
@@ -34,19 +38,21 @@ pub trait ConstructorCaller:
         let new_arr = ContextVar {
             loc: Some(loc),
             name: format!("tmp_arr{}", ctx.new_tmp(self).into_expr_err(loc)?),
-            display_name: "arr".to_string(),
+            display_name: "tmp_arr".to_string(),
             storage: None,
             is_tmp: true,
             is_symbolic: false,
             is_return: false,
             tmp_of: None,
             dep_on: None,
+            is_fundamental: None,
             ty: ty.expect("No type for node"),
         };
 
         let arr = ContextVarNode::from(self.add_node(new_arr));
 
-        let len_var = ContextVar {
+        let u256 = self.builtin_or_add(Builtin::Uint(256));
+        let new_len_var = ContextVar {
             loc: Some(loc),
             name: arr.name(self).into_expr_err(loc)? + ".length",
             display_name: arr.display_name(self).unwrap() + ".length",
@@ -56,41 +62,22 @@ pub trait ConstructorCaller:
             dep_on: None,
             is_symbolic: true,
             is_return: false,
-            ty: ContextVarNode::from(len_cvar)
-                .underlying(self)
-                .into_expr_err(loc)?
-                .ty
-                .clone(),
+            is_fundamental: None,
+            ty: VarType::try_from_idx(self, u256).unwrap(),
         };
 
-        let len_cvar = self.add_node(len_var);
+        let new_len_cvar = ContextVarNode::from(self.add_node(new_len_var));
         self.add_edge(arr, ctx, Edge::Context(ContextEdge::Variable));
         ctx.add_var(arr, self).into_expr_err(loc)?;
-        self.add_edge(len_cvar, ctx, Edge::Context(ContextEdge::Variable));
-        ctx.add_var(len_cvar.into(), self).into_expr_err(loc)?;
+        self.add_edge(new_len_cvar, ctx, Edge::Context(ContextEdge::Variable));
+        ctx.add_var(new_len_cvar, self).into_expr_err(loc)?;
         self.add_edge(
-            len_cvar,
+            new_len_cvar,
             arr,
             Edge::Context(ContextEdge::AttrAccess("length")),
         );
 
-        // update the length
-        if let Some(r) = arr.ref_range(self).into_expr_err(loc)? {
-            let min = r.evaled_range_min(self, arena).into_expr_err(loc)?;
-            let max = r.evaled_range_max(self, arena).into_expr_err(loc)?;
-
-            if let Some(mut rd) = min.maybe_range_dyn() {
-                rd.len = Box::new(Elem::from(len_cvar));
-                arr.set_range_min(self, arena, Elem::ConcreteDyn(rd))
-                    .into_expr_err(loc)?;
-            }
-
-            if let Some(mut rd) = max.maybe_range_dyn() {
-                rd.len = Box::new(Elem::from(len_cvar));
-                arr.set_range_min(self, arena, Elem::ConcreteDyn(rd))
-                    .into_expr_err(loc)?;
-            }
-        }
+        self.assign(arena, loc, new_len_cvar, len_cvar.into(), ctx)?;
 
         ctx.push_expr(ExprRet::Single(arr.into()), self)
             .into_expr_err(loc)
@@ -102,7 +89,7 @@ pub trait ConstructorCaller:
         _arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
         con_node: ContractNode,
-        _input: ExprRet,
+        input: ExprRet,
         loc: Loc,
     ) -> Result<(), ExprErr> {
         // construct a new contract
@@ -118,7 +105,12 @@ pub trait ConstructorCaller:
                 ))
             }
         };
+        // TODO: add to address map
         let contract_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+        let e = Elem::from(input.expect_single().into_expr_err(loc)?);
+        contract_cvar
+            .set_range(self, From::from(e))
+            .into_expr_err(loc)?;
         ctx.push_expr(ExprRet::Single(contract_cvar.into()), self)
             .into_expr_err(loc)
     }
@@ -151,6 +143,54 @@ pub trait ConstructorCaller:
                     field.underlying(self).unwrap().clone(),
                 )
                 .expect("Invalid struct field");
+
+                let fc_node = self.add_node(field_cvar);
+                self.add_edge(
+                    fc_node,
+                    cvar,
+                    Edge::Context(ContextEdge::AttrAccess("field")),
+                );
+                self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
+                ctx.add_var(fc_node.into(), self).into_expr_err(loc)?;
+                let field_as_ret = ExprRet::Single(fc_node);
+                self.match_assign_sides(arena, ctx, loc, &field_as_ret, &input)?;
+                let _ = ctx.pop_n_latest_exprs(1, loc, self).into_expr_err(loc)?;
+                Ok(())
+            })?;
+
+        ctx.push_expr(ExprRet::Single(cvar), self)
+            .into_expr_err(loc)
+    }
+
+    fn construct_err_inner(
+        &mut self,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        err: ErrorNode,
+        inputs: ExprRet,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        let var = ContextVar::maybe_from_user_ty(self, loc, err.0.into()).unwrap();
+        let cvar = self.add_node(var);
+        ctx.add_var(cvar.into(), self).into_expr_err(loc)?;
+        self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
+        let inputs = inputs.as_vec();
+        // set error fields
+        err.fields(self)
+            .iter()
+            .zip(inputs)
+            .enumerate()
+            .try_for_each(|(i, (field, input))| {
+                let field_cvar = ContextVar::maybe_new_from_error_param(
+                    self,
+                    loc,
+                    ContextVarNode::from(cvar)
+                        .underlying(self)
+                        .into_expr_err(loc)?,
+                    field.underlying(self).unwrap().clone(),
+                    i,
+                )
+                .expect("Invalid error field");
 
                 let fc_node = self.add_node(field_cvar);
                 self.add_edge(

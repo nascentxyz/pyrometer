@@ -34,6 +34,8 @@ pub trait AnalyzerBackend:
         FunctionReturn = FunctionReturn,
         Function = Function,
         FlatExpr = FlatExpr,
+        ExecError = Error,
+        ExecErrorParam = ErrorParam,
     > + GraphBackend
 {
     fn add_concrete_var(
@@ -100,6 +102,8 @@ pub enum Node {
     Concrete(Concrete),
     /// The `msg` global in solidity
     Msg(Box<Msg>),
+    /// Local function call environmental data
+    EnvCtx(EnvCtx),
     /// The `block` global in solidity
     Block(Box<Block>),
     /// A yul-based function
@@ -298,29 +302,6 @@ impl Heirarchical for Edge {
     }
 }
 
-/// An enum denoting either a call or a fork
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
-pub enum CallFork {
-    Call(ContextNode),
-    Fork(ContextNode, ContextNode),
-}
-
-impl CallFork {
-    pub fn maybe_call(&self) -> Option<ContextNode> {
-        match self {
-            CallFork::Call(c) => Some(*c),
-            _ => None,
-        }
-    }
-
-    pub fn maybe_fork(&self) -> Option<(ContextNode, ContextNode)> {
-        match self {
-            CallFork::Fork(w1, w2) => Some((*w1, *w2)),
-            _ => None,
-        }
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub enum ContextEdge {
     // Control flow
@@ -363,6 +344,7 @@ pub enum ContextEdge {
     /// A connection between a variable and a parent variable where the child is some index into the parent
     /// (i.e. `x[1]`)
     IndexAccess,
+    LocationAlias,
     /// A connection between a variable and a parent variable where the child is some field of the parent
     StructAccess,
     /// A connection between a function-as-a-variable and the contract that holds that function
@@ -395,6 +377,8 @@ pub enum ContextEdge {
     // Range analysis
     /// Unused
     Range,
+
+    Env,
 }
 
 #[derive(Default)]

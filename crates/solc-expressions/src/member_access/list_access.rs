@@ -7,7 +7,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> ListAccess for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
@@ -61,6 +61,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         // search for latest length
         if let Some(len_var) = array.array_to_len_var(self) {
             let len_node = self.advance_var_in_ctx(
+                arena,
                 len_var.latest_version_or_inherited_in_ctx(ctx, self),
                 loc,
                 ctx,
@@ -89,18 +90,14 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
         // no length variable, create one
         let name = format!("{}.length", array.name(self).into_expr_err(loc)?);
 
+        let array = array.latest_version_or_inherited_in_ctx(ctx, self);
         // we have to force here to avoid length <-> array recursion
-        let target_arr = self.advance_var_in_ctx_forcible(
-            array.latest_version_or_inherited_in_ctx(ctx, self),
-            loc,
-            ctx,
-            true,
-        )?;
+        let target_arr = self.advance_var_in_ctx_forcible(arena, array, loc, ctx, true)?;
 
         // Create the range from the current length or default to [0, uint256.max]
         let len_min = Elem::from(array)
             .get_length()
-            .max(Elem::from(Concrete::from(U256::zero())));
+            .max(Elem::from(Concrete::from(U256::ZERO)));
         let len_max = Elem::from(array)
             .get_length()
             .min(Elem::from(Concrete::from(U256::MAX)));
@@ -110,12 +107,13 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
             loc: Some(loc),
             name,
             display_name: array.display_name(self).into_expr_err(loc)? + ".length",
-            storage: None,
+            storage: array.storage(self).into_expr_err(loc)?.clone(),
             is_tmp: false,
             tmp_of: None,
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::BuiltIn(
                 BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
                 Some(range),
@@ -175,12 +173,13 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 loc: Some(loc),
                 name: arr.name(self).unwrap() + ".length",
                 display_name: arr.display_name(self).unwrap() + ".length",
-                storage: None,
+                storage: *arr.storage(self).unwrap(),
                 is_tmp: false,
                 tmp_of: None,
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
                     range,
@@ -190,6 +189,7 @@ pub trait ListAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
 
             let next_arr = self
                 .advance_var_in_ctx(
+                    arena,
                     arr.latest_version_or_inherited_in_ctx(array_ctx, self),
                     loc,
                     array_ctx,

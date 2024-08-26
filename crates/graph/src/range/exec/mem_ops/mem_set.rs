@@ -6,7 +6,7 @@ use crate::{
 
 use shared::RangeArena;
 
-use ethers_core::types::{H256, U256};
+use alloy_primitives::{B256, U256};
 
 use std::collections::BTreeMap;
 
@@ -47,7 +47,7 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     .map(|(i, v)| {
                         let mut bytes = [0x00; 32];
                         bytes[0] = *v;
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                         (
                             Elem::from(Concrete::from(U256::from(i))),
                             (v, self.op_num + i),
@@ -69,7 +69,7 @@ impl RangeMemSet<Concrete, RangeConcrete<Concrete>> for RangeDyn<Concrete> {
                     .map(|(i, v)| {
                         let mut bytes = [0x00; 32];
                         v.encode_utf8(&mut bytes[..]);
-                        let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                        let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                         (
                             Elem::from(Concrete::from(U256::from(i))),
                             (v, i + self.op_num),
@@ -107,7 +107,7 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
                 Concrete::DynBytes(ref val) => Some(Elem::Concrete(RangeConcrete::new(
                     Concrete::DynBytes({
                         let mut v = val.clone();
-                        v.resize(len.as_usize(), 0);
+                        v.resize(len.try_into().unwrap(), 0);
                         v
                     }),
                     self.loc,
@@ -115,13 +115,14 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
                 Concrete::String(ref val) => Some(Elem::Concrete(RangeConcrete::new(
                     Concrete::String({
                         let mut v = val.clone();
-                        v.push_str(&" ".repeat(len.as_usize() - v.chars().count()));
+                        let len: usize = len.try_into().unwrap();
+                        v.push_str(&" ".repeat(len - v.chars().count()));
                         v
                     }),
                     self.loc,
                 ))),
                 Concrete::Bytes(_, val) => Some(Elem::Concrete(RangeConcrete::new(
-                    Concrete::Bytes(len.as_u32() as u8, val),
+                    Concrete::Bytes(len.try_into().unwrap(), val),
                     self.loc,
                 ))),
                 _ => None,
@@ -134,7 +135,7 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
                             .map(|(i, v)| {
                                 let mut bytes = [0x00; 32];
                                 bytes[0] = *v;
-                                let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                                let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                                 (Elem::from(Concrete::from(U256::from(i))), (v, i))
                             })
                             .collect::<BTreeMap<_, _>>(),
@@ -145,7 +146,7 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
                             .map(|(i, v)| {
                                 let mut bytes = [0x00; 32];
                                 v.encode_utf8(&mut bytes[..]);
-                                let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                                let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                                 (Elem::from(Concrete::from(U256::from(i))), (v, i))
                             })
                             .collect::<BTreeMap<_, _>>(),
@@ -167,7 +168,7 @@ impl RangeMemSet<Concrete> for RangeConcrete<Concrete> {
                             .map(|(i, v)| {
                                 let mut bytes = [0x00; 32];
                                 bytes[0] = *v;
-                                let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                                let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                                 (Elem::from(Concrete::from(U256::from(i))), (v, i))
                             })
                             .collect::<BTreeMap<_, _>>(),
@@ -294,7 +295,7 @@ mod tests {
             Loc::Implicit,
         )
         .unwrap();
-        let new_len = test_reference(0, 6.into(), 10.into());
+        let new_len = test_reference(0, U256::from(6), U256::from(10));
         let result = Elem::ConcreteDyn(x).range_set_length(&new_len).unwrap();
         assert_eq!(result.range_get_length().unwrap(), new_len);
     }
@@ -391,7 +392,7 @@ mod tests {
 
     #[test]
     fn dyn_ref_set_indices() {
-        let idx = test_reference(0, 0.into(), 2000.into());
+        let idx = test_reference(0, U256::ZERO, U256::from(2000));
         let rand: Elem<_> = rc_uint256(1337).into();
         let val: Elem<_> = rc_uint256(200).into();
         let x = RangeDyn::new_for_indices(vec![(rand.clone(), rand.clone())], Loc::Implicit);

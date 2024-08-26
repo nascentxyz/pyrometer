@@ -8,7 +8,7 @@ use shared::{GraphError, NodeIdx, RangeArena};
 
 use std::hash::{Hash, Hasher};
 
-use ethers_core::types::{I256, U256};
+use alloy_primitives::{I256, U256};
 use solang_parser::pt::Loc;
 
 /// A concrete value for a range element
@@ -31,7 +31,7 @@ pub fn rc_uint256(n: u128) -> RangeConcrete<Concrete> {
 
 pub fn rc_int_sized(n: i128) -> RangeConcrete<Concrete> {
     let size: u16 = ((32 - ((n.abs().leading_zeros() + 128) / 8)) * 8).max(8) as u16;
-    RangeConcrete::new(Concrete::Int(size, I256::from(n)), Loc::Implicit)
+    RangeConcrete::new(Concrete::Int(size, I256::unchecked_from(n)), Loc::Implicit)
 }
 
 pub fn rc_i256_sized(n: I256) -> RangeConcrete<Concrete> {
@@ -40,7 +40,7 @@ pub fn rc_i256_sized(n: I256) -> RangeConcrete<Concrete> {
 }
 
 pub fn rc_int256(n: i128) -> RangeConcrete<Concrete> {
-    RangeConcrete::new(Concrete::Int(256, I256::from(n)), Loc::Implicit)
+    RangeConcrete::new(Concrete::Int(256, I256::unchecked_from(n)), Loc::Implicit)
 }
 
 impl<T> RangeConcrete<T> {

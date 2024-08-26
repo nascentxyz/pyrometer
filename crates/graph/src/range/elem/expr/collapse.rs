@@ -8,7 +8,7 @@ use crate::{
     },
 };
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use shared::RangeArena;
 
 pub static ORD_OPS: &[RangeOp] = &[
@@ -577,8 +577,8 @@ pub fn collapse(
             }
         }
         (le @ Elem::Reference(_), c @ Elem::Concrete(_)) => {
-            let zero = Elem::from(Concrete::from(U256::zero()));
-            let one = Elem::from(Concrete::from(U256::one()));
+            let zero = Elem::from(Concrete::from(U256::ZERO));
+            let one = Elem::from(Concrete::from(U256::from(1)));
             match op {
                 RangeOp::Sub(_) | RangeOp::Add(_) => {
                     if matches!(c.range_ord(&zero, arena), Some(std::cmp::Ordering::Equal)) {
@@ -603,6 +603,9 @@ pub fn collapse(
         },
         (real, Elem::Null) => match op {
             RangeOp::Max | RangeOp::Min => MaybeCollapsed::Collapsed(real.clone()),
+            RangeOp::BitNot if matches!(real, Elem::Concrete(..)) => {
+                MaybeCollapsed::Collapsed(real.range_bit_not().unwrap())
+            }
             _ => MaybeCollapsed::Not(real, op, Elem::Null),
         },
         (l, r) => return MaybeCollapsed::Not(l, op, r),

@@ -1,8 +1,10 @@
 use crate::{
-    nodes::{ContextNode, ContextVarNode, ExprRet, VarNode},
+    elem::Elem,
+    nodes::{Concrete, ContextNode, ContextVarNode, EnvCtxNode, ExprRet, VarNode},
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode,
 };
-use shared::GraphError;
+use petgraph::Direction;
+use shared::{GraphError, RangeArena};
 
 use petgraph::visit::EdgeRef;
 use solang_parser::pt::Loc;
@@ -38,6 +40,24 @@ impl ContextNode {
         ))
     }
 
+    pub fn debug_expr_stack_str_ranged(
+        &self,
+        analyzer: &impl GraphBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> Result<String, GraphError> {
+        let underlying_mut = self.underlying(analyzer)?;
+        Ok(format!(
+            "{:#?}",
+            underlying_mut
+                .expr_ret_stack
+                .iter()
+                .rev()
+                .enumerate()
+                .map(|(i, elem)| format!("{i}. {}", elem.debug_str_ranged(analyzer, arena)))
+                .collect::<Vec<_>>()
+        ))
+    }
+
     pub fn debug_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
         println!("{}", self.debug_expr_stack_str(analyzer)?);
         Ok(())
@@ -50,6 +70,12 @@ impl ContextNode {
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<(), GraphError> {
         // var.cache_range(analyzer)?;
+        if var.is_storage(analyzer)? {
+            let name = var.name(analyzer)?;
+            let vars = &mut self.underlying_mut(analyzer)?.cache.storage_vars;
+            vars.insert(name, var);
+        }
+
         if var.underlying(analyzer)?.is_tmp {
             let name = var.display_name(analyzer)?;
             let vars = &mut self.underlying_mut(analyzer)?.cache.tmp_vars;
@@ -82,6 +108,25 @@ impl ContextNode {
             .copied()
     }
 
+    pub fn return_var_by_name(
+        &self,
+        analyzer: &impl GraphBackend,
+        name: &str,
+    ) -> Option<ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|e| matches!(e.weight(), Edge::Context(ContextEdge::Variable)))
+            .map(|e| ContextVarNode::from(e.source()))
+            .find(|var| {
+                if let Ok(var) = var.underlying(analyzer) {
+                    var.is_return && var.name == name
+                } else {
+                    false
+                }
+            })
+    }
+
     pub fn tmp_var_by_name(
         &self,
         analyzer: &impl GraphBackend,
@@ -91,6 +136,43 @@ impl ContextNode {
             .unwrap()
             .cache
             .tmp_vars
+            .get(name)
+            .copied()
+    }
+
+    pub fn env_or_recurse(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<Option<EnvCtxNode>, GraphError> {
+        if let Some(env) = analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .find(|e| matches!(e.weight(), Edge::Context(ContextEdge::Env)))
+            .map(|e| e.source())
+        {
+            return Ok(Some(env.into()));
+        }
+
+        if let Some(parent) = self.ancestor_in_call(analyzer)? {
+            if let Some(in_parent) = parent.env_or_recurse(analyzer)? {
+                Ok(Some(in_parent))
+            } else {
+                Ok(None)
+            }
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn storage_var_by_name(
+        &self,
+        analyzer: &impl GraphBackend,
+        name: &str,
+    ) -> Option<ContextVarNode> {
+        self.underlying(analyzer)
+            .unwrap()
+            .cache
+            .storage_vars
             .get(name)
             .copied()
     }
@@ -118,6 +200,59 @@ impl ContextNode {
         }
     }
 
+    pub fn return_var_by_name_or_recurse(
+        &self,
+        analyzer: &impl GraphBackend,
+        name: &str,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        if let Some(var) = self.var_by_name(analyzer, name) {
+            if var.underlying(analyzer)?.is_return {
+                return Ok(Some(var));
+            }
+        }
+
+        if let Some(var) = self.return_var_by_name(analyzer, name) {
+            return Ok(Some(var));
+        }
+
+        if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
+            if let Some(in_parent) = parent.return_var_by_name_or_recurse(analyzer, name)? {
+                return Ok(Some(in_parent));
+            }
+        }
+
+        if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
+            parent.return_var_by_name_or_recurse(analyzer, name)
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn storage_var_by_name_or_recurse(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        name: &str,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        if let Some(var) = self.storage_var_by_name(analyzer, name) {
+            return Ok(Some(var));
+        }
+
+        let relevant_contract = self.contract_id(analyzer)?;
+        let mut next_parent = self.underlying(analyzer)?.parent_ctx();
+        while let Some(parent) = next_parent {
+            let parent_contract = parent.contract_id(analyzer)?;
+            if parent_contract == relevant_contract {
+                if let Some(in_parent) = parent.storage_var_by_name(analyzer, name) {
+                    return Ok(Some(in_parent.latest_version(analyzer)));
+                }
+            }
+
+            next_parent = parent.underlying(analyzer)?.parent_ctx();
+        }
+
+        Ok(None)
+    }
+
     /// Gets a variable by name or recurses up the relevant scopes/contexts until it is found
     pub fn struct_field_access_by_name_recurse(
         &self,
@@ -140,7 +275,7 @@ impl ContextNode {
 
         // maybe move var into this context
         let member = self.maybe_move_var(member, loc, analyzer)?;
-        let fields = member.struct_to_fields(analyzer)?;
+        let fields = member.fielded_to_fields(analyzer)?;
         let field = fields.into_iter().find(|field| {
             let full_name = field.name(analyzer).unwrap();
             let target_field_name = full_name.split('.').last().unwrap();
@@ -155,12 +290,10 @@ impl ContextNode {
         self.underlying(analyzer)
             .unwrap()
             .cache
-            .vars
-            .clone()
-            .into_iter()
-            .filter(|(_, var)| var.is_storage(analyzer).unwrap())
-            .map(|(_, var)| var)
-            .collect::<Vec<_>>()
+            .storage_vars
+            .values()
+            .cloned()
+            .collect()
     }
 
     pub fn contract_vars_referenced(&self, analyzer: &impl AnalyzerBackend) -> Vec<VarNode> {
@@ -373,7 +506,7 @@ impl ContextNode {
             Edge::Context(ContextEdge::AttrAccess("field")),
         );
 
-        let sub_fields = field.struct_to_fields(analyzer)?;
+        let sub_fields = field.fielded_to_fields(analyzer)?;
         sub_fields.iter().try_for_each(|sub_field| {
             Self::recursive_move_struct_field(new_cvarnode, *sub_field, loc, analyzer)
         })
@@ -419,7 +552,7 @@ impl ContextNode {
                     Edge::Context(ContextEdge::InheritedVariable),
                 );
 
-                let fields = var.struct_to_fields(analyzer)?;
+                let fields = var.fielded_to_fields(analyzer)?;
                 fields.iter().try_for_each(|field| {
                     Self::recursive_move_struct_field(new_cvarnode, *field, loc, analyzer)
                 })?;

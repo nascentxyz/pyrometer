@@ -47,5 +47,25 @@ contract Env {
         uint p = msg.value;
         uint q = tx.gasprice;
         address r = tx.origin;
+        bytes32 b = blobhash(1);
+        uint d = block.blobbasefee;
+        a;
+        c;
+        e;
+        f;
+        g;
+        h;
+        i;
+        j;
+        k;
+        l;
+        m;
+        n;
+        o;
+        p;
+        q;
+        r;
+        b;
+        d;
     }
 }

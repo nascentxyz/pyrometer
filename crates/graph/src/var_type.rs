@@ -13,13 +13,55 @@ use shared::{GraphError, RangeArena};
 
 use shared::NodeIdx;
 
-use ethers_core::types::{Address, U256};
+use alloy_primitives::{Address, U256};
 
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Ord, PartialOrd)]
+#[derive(Debug, Clone, Eq, Hash, Ord, PartialOrd)]
 pub enum VarType {
     User(TypeNode, Option<SolcRange>),
     BuiltIn(BuiltInNode, Option<SolcRange>),
     Concrete(ConcreteNode),
+}
+
+impl PartialEq for VarType {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::User(s, Some(sr)), Self::User(o, Some(or))) if s == o => {
+                let min = if sr.min_cached.is_some() {
+                    sr.min_cached == or.min_cached
+                } else {
+                    sr.min == or.min
+                };
+                let max = if sr.max_cached.is_some() {
+                    sr.max_cached == or.max_cached
+                } else {
+                    sr.max == or.max
+                };
+
+                let exclusions = sr.exclusions == or.exclusions;
+                min && max && exclusions
+            }
+            (Self::BuiltIn(s, Some(sr)), Self::BuiltIn(o, Some(or))) if s == o => {
+                let min = if sr.min_cached.is_some() {
+                    sr.min_cached == or.min_cached
+                } else {
+                    sr.min == or.min
+                };
+                let max = if sr.max_cached.is_some() {
+                    sr.max_cached == or.max_cached
+                } else {
+                    sr.max == or.max
+                };
+
+                let exclusions = sr.exclusions == or.exclusions;
+                min && max && exclusions
+            }
+            (Self::Concrete(s), Self::Concrete(o)) => s == o,
+            // no range eq check
+            (Self::User(s, None), Self::User(o, None)) => s == o,
+            (Self::BuiltIn(s, None), Self::BuiltIn(o, None)) => s == o,
+            _ => false,
+        }
+    }
 }
 
 impl AsDotStr for VarType {
@@ -28,11 +70,19 @@ impl AsDotStr for VarType {
         analyzer: &impl GraphBackend,
         _arena: &mut RangeArena<Elem<Concrete>>,
     ) -> String {
-        self.as_string(analyzer).unwrap()
+        self.as_helpful_string(analyzer).unwrap()
     }
 }
 
 impl VarType {
+    pub fn rangeless_clone(&self) -> Self {
+        match self {
+            VarType::User(t, _) => VarType::User(*t, None),
+            VarType::BuiltIn(t, _) => VarType::BuiltIn(*t, None),
+            VarType::Concrete(t) => VarType::Concrete(*t),
+        }
+    }
+
     pub fn set_range(&mut self, new_range: SolcRange) -> Result<(), GraphError> {
         match self {
             VarType::User(TypeNode::Enum(_), ref mut r)
@@ -91,6 +141,20 @@ impl VarType {
     pub fn is_dyn_builtin(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         match self {
             Self::BuiltIn(node, _) => node.is_dyn(analyzer),
+            _ => Ok(false),
+        }
+    }
+
+    pub fn is_string(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => node.is_string(analyzer),
+            _ => Ok(false),
+        }
+    }
+
+    pub fn is_bytes(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => node.is_bytes(analyzer),
             _ => Ok(false),
         }
     }
@@ -215,10 +279,11 @@ impl VarType {
             )),
             Node::Function(_) => Some(VarType::User(TypeNode::Func(node.into()), None)),
             Node::Struct(_) => Some(VarType::User(TypeNode::Struct(node.into()), None)),
+            Node::Error(_) => Some(VarType::User(TypeNode::Error(node.into()), None)),
             Node::Enum(enu) => {
                 let variants = enu.variants();
                 let range = if !variants.is_empty() {
-                    let min = Concrete::from(U256::zero()).into();
+                    let min = Concrete::from(U256::ZERO).into();
                     let max = Concrete::from(U256::from(variants.len() - 1)).into();
                     Some(SolcRange::new(min, max, vec![]))
                 } else {
@@ -237,8 +302,7 @@ impl VarType {
                 Some(VarType::User(TypeNode::Ty(node.into()), Some(range)))
             }
             Node::FunctionParam(inner) => VarType::try_from_idx(analyzer, inner.ty),
-            Node::Error(..)
-            | Node::ContextFork
+            Node::ContextFork
             | Node::FunctionCall
             | Node::FunctionReturn(..)
             | Node::ErrorParam(..)
@@ -248,6 +312,7 @@ impl VarType {
             | Node::Entry
             | Node::Context(..)
             | Node::Msg(_)
+            | Node::EnvCtx(_)
             | Node::Block(_)
             | Node::YulFunction(..) => None,
         }
@@ -568,6 +633,10 @@ impl VarType {
         }
     }
 
+    pub fn is_concrete(&self) -> bool {
+        matches!(self, Self::Concrete(_))
+    }
+
     pub fn is_const(
         &self,
         analyzer: &impl GraphBackend,
@@ -608,123 +677,6 @@ impl VarType {
         }))
     }
 
-    // pub fn try_match_index_dynamic_ty(
-    //     &self,
-    //     index: ContextVarNode,
-    //     analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    // ) -> Result<Option<NodeIdx>, GraphError> {
-    //     match self {
-    //         Self::BuiltIn(_node, None) => Ok(None),
-    //         Self::BuiltIn(node, Some(r)) => {
-    //             if let Builtin::Bytes(size) = node.underlying(analyzer)? {
-    //                 if r.is_const(analyzer)? && index.is_const(analyzer)? {
-    //                     let Some(min) = r.evaled_range_min(analyzer, arena)?.maybe_concrete() else {
-    //                         return Ok(None);
-    //                     };
-    //                     let Concrete::Bytes(_, val) = min.val else {
-    //                         return Ok(None);
-    //                     };
-    //                     let Some(idx) = index.evaled_range_min(analyzer, arena)?.unwrap().maybe_concrete()
-    //                     else {
-    //                         return Ok(None);
-    //                     };
-    //                     let Concrete::Uint(_, idx) = idx.val else {
-    //                         return Ok(None);
-    //                     };
-    //                     if idx.low_u32() < (*size as u32) {
-    //                         let mut h = H256::default();
-    //                         h.0[0] = val.0[idx.low_u32() as usize];
-    //                         let ret_val = Concrete::Bytes(1, h);
-    //                         let node = analyzer.add_node(ret_val);
-    //                         return Ok(Some(node));
-    //                     }
-    //                 }
-    //                 Ok(None)
-    //             } else {
-    //                 // check if the index exists as a key
-    //                 let min = r.range_min();
-    //                 if let Some(map) = min.dyn_map() {
-    //                     let name = index.name(analyzer)?;
-    //                     let is_const = index.is_const(analyzer)?;
-    //                     if let Some((_k, val)) = map.iter().find(|(k, _v)| match k {
-    //                         Elem::Reference(Reference { idx, .. }) => match analyzer.node(*idx) {
-    //                             Node::ContextVar(_) => {
-    //                                 let cvar = ContextVarNode::from(*idx);
-    //                                 cvar.name(analyzer).unwrap() == name
-    //                             }
-    //                             _ => false,
-    //                         },
-    //                         c @ Elem::Concrete(..) if is_const => {
-    //                             let index_val = index.evaled_range_min(analyzer, arena).unwrap().unwrap();
-    //                             index_val.range_eq(c)
-    //                         }
-    //                         _ => false,
-    //                     }) {
-    //                         if let Some(idx) = val.0.node_idx() {
-    //                             return Ok(idx.into());
-    //                         } else if let Some(c) = val.0.concrete() {
-    //                             let cnode = analyzer.add_node(c);
-    //                             return Ok(cnode.into());
-    //                         }
-    //                     }
-    //                 }
-    //                 Ok(None)
-    //             }
-    //         }
-    //         Self::Concrete(node) => {
-    //             if index.is_const(analyzer)? {
-    //                 let idx = index
-    //                     .evaled_range_min(analyzer, arena)
-    //                     .unwrap()
-    //                     .unwrap()
-    //                     .concrete()
-    //                     .unwrap()
-    //                     .uint_val()
-    //                     .unwrap();
-    //                 match node.underlying(analyzer)? {
-    //                     Concrete::Bytes(size, val) => {
-    //                         if idx.low_u32() < (*size as u32) {
-    //                             let mut h = H256::default();
-    //                             h.0[0] = val.0[idx.low_u32() as usize];
-    //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(ret_val);
-    //                             return Ok(Some(node));
-    //                         }
-    //                     }
-    //                     Concrete::DynBytes(elems) => {
-    //                         if idx.low_u32() < (elems.len() as u32) {
-    //                             let mut h = H256::default();
-    //                             h.0[0] = elems[idx.low_u32() as usize];
-    //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(ret_val);
-    //                             return Ok(Some(node));
-    //                         }
-    //                     }
-    //                     Concrete::String(st) => {
-    //                         if idx.low_u32() < (st.len() as u32) {
-    //                             let mut h = H256::default();
-    //                             h.0[0] = st.as_bytes()[idx.low_u32() as usize];
-    //                             let ret_val = Concrete::Bytes(1, h);
-    //                             let node = analyzer.add_node(ret_val);
-    //                             return Ok(Some(node));
-    //                         }
-    //                     }
-    //                     Concrete::Array(elems) => {
-    //                         if idx.low_u32() < (elems.len() as u32) {
-    //                             let elem = &elems[idx.low_u32() as usize];
-    //                             let node = analyzer.add_node(Node::Concrete(elem.clone()));
-    //                             return Ok(Some(node));
-    //                         }
-    //                     }
-    //                     _ => {}
-    //                 }
-    //             }
-    //             Ok(None)
-    //         }
-    //         _ => Ok(None),
-    //     }
-    // }
-
     pub fn dynamic_underlying_ty(
         &self,
         analyzer: &mut impl AnalyzerBackend,
@@ -764,6 +716,17 @@ impl VarType {
         }
     }
 
+    pub fn maybe_builtin(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<Builtin>, GraphError> {
+        match self {
+            Self::BuiltIn(node, _) => Ok(Some(node.underlying(analyzer)?.clone())),
+            Self::Concrete(node) => Ok(Some(node.underlying(analyzer)?.as_builtin())),
+            _ => Ok(None),
+        }
+    }
+
     pub fn is_dyn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         match self {
             Self::BuiltIn(node, _) => Ok(node.is_dyn(analyzer)?),
@@ -795,18 +758,13 @@ impl VarType {
             }
             (VarType::BuiltIn(s, _), VarType::BuiltIn(o, _)) => {
                 match (s.underlying(analyzer)?, o.underlying(analyzer)?) {
-                    (Builtin::Array(l), Builtin::Array(r)) => Ok(l
-                        .unresolved_as_resolved(analyzer)?
-                        == r.unresolved_as_resolved(analyzer)?),
-                    (Builtin::SizedArray(l_size, l), Builtin::SizedArray(r_size, r)) => Ok(l
-                        .unresolved_as_resolved(analyzer)?
-                        == r.unresolved_as_resolved(analyzer)?
-                        && l_size == r_size),
-                    (Builtin::Mapping(lk, lv), Builtin::Mapping(rk, rv)) => Ok(lk
-                        .unresolved_as_resolved(analyzer)?
-                        == rk.unresolved_as_resolved(analyzer)?
-                        && lv.unresolved_as_resolved(analyzer)?
-                            == rv.unresolved_as_resolved(analyzer)?),
+                    (Builtin::Array(l), Builtin::Array(r)) => l.ty_eq(r, analyzer),
+                    (Builtin::SizedArray(l_size, l), Builtin::SizedArray(r_size, r)) => {
+                        Ok(l.ty_eq(r, analyzer)? && l_size == r_size)
+                    }
+                    (Builtin::Mapping(lk, lv), Builtin::Mapping(rk, rv)) => {
+                        Ok(lk.ty_eq(rk, analyzer)? && lv.ty_eq(rv, analyzer)?)
+                    }
                     (l, r) => Ok(l == r),
                 }
             }
@@ -820,6 +778,17 @@ impl VarType {
     pub fn as_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         match self {
             VarType::User(ty_node, _) => ty_node.as_string(analyzer),
+            VarType::BuiltIn(bn, _) => match analyzer.node(*bn) {
+                Node::Builtin(bi) => bi.as_string(analyzer),
+                _ => unreachable!(),
+            },
+            VarType::Concrete(c) => c.underlying(analyzer)?.as_builtin().as_string(analyzer),
+        }
+    }
+
+    pub fn as_helpful_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
+        match self {
+            VarType::User(ty_node, _) => ty_node.as_helpful_string(analyzer),
             VarType::BuiltIn(bn, _) => match analyzer.node(*bn) {
                 Node::Builtin(bi) => bi.as_string(analyzer),
                 _ => unreachable!(),
@@ -849,6 +818,14 @@ impl VarType {
     pub fn maybe_struct(&self) -> Option<StructNode> {
         if let VarType::User(TypeNode::Struct(sn), _) = self {
             Some(*sn)
+        } else {
+            None
+        }
+    }
+
+    pub fn maybe_err(&self) -> Option<ErrorNode> {
+        if let VarType::User(TypeNode::Error(en), _) = self {
+            Some(*en)
         } else {
             None
         }
@@ -905,11 +882,23 @@ impl From<FunctionNode> for TypeNode {
 impl TypeNode {
     pub fn as_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         match self {
-            TypeNode::Contract(n) => n.name(analyzer),
-            TypeNode::Struct(n) => n.name(analyzer),
-            TypeNode::Enum(n) => n.name(analyzer),
-            TypeNode::Error(n) => n.name(analyzer),
-            TypeNode::Ty(n) => n.name(analyzer),
+            TypeNode::Contract(n) => Ok(n.name(analyzer)?),
+            TypeNode::Struct(n) => Ok(n.name(analyzer)?),
+            TypeNode::Enum(n) => Ok(n.name(analyzer)?),
+            TypeNode::Error(n) => Ok(n.name(analyzer)?),
+            TypeNode::Ty(n) => Ok(n.name(analyzer)?),
+            TypeNode::Func(n) => Ok(n.name(analyzer)?),
+            TypeNode::Unresolved(n) => Ok(format!("UnresolvedType<{:?}>", analyzer.node(*n))),
+        }
+    }
+
+    pub fn as_helpful_string(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
+        match self {
+            TypeNode::Contract(n) => Ok(format!("{} (Contract)", n.name(analyzer)?)),
+            TypeNode::Struct(n) => Ok(format!("{} (Struct)", n.name(analyzer)?)),
+            TypeNode::Enum(n) => Ok(format!("{} (Enum)", n.name(analyzer)?)),
+            TypeNode::Error(n) => Ok(format!("{} (Error)", n.name(analyzer)?)),
+            TypeNode::Ty(n) => Ok(format!("{} (Type Alias)", n.name(analyzer)?)),
             TypeNode::Func(n) => Ok(format!("function {}", n.name(analyzer)?)),
             TypeNode::Unresolved(n) => Ok(format!("UnresolvedType<{:?}>", analyzer.node(*n))),
         }

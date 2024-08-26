@@ -1,16 +1,17 @@
 use crate::{
     nodes::{
         BuiltInNode, Builtin, Concrete, ConcreteNode, ContextNode, ContextVarNode, ContractNode,
-        EnumNode, Field, FunctionNode, FunctionParam, FunctionReturn, StructNode, TyNode,
+        EnumNode, ErrorParam, Field, FunctionNode, FunctionParam, FunctionReturn, StructNode,
+        TyNode, VarNode,
     },
     range::Range,
     AnalyzerBackend, GraphBackend, Node, SolcRange, TypeNode, VarType,
 };
 
 use crate::range::elem::*;
-use shared::{GraphError, NodeIdx, StorageLocation};
+use shared::{GraphError, NodeIdx, RangeArena, StorageLocation};
 
-use solang_parser::pt::Loc;
+use solang_parser::pt::{Expression, Loc};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextVar {
@@ -23,6 +24,7 @@ pub struct ContextVar {
     pub dep_on: Option<Vec<ContextVarNode>>,
     pub is_symbolic: bool,
     pub is_return: bool,
+    pub is_fundamental: Option<bool>,
     pub ty: VarType,
 }
 
@@ -55,6 +57,33 @@ impl ContextVar {
             && self.is_symbolic == other.is_symbolic
             && self.is_return == other.is_return
             && self.ty == other.ty
+    }
+
+    pub fn eq_ignore_loc_print(&self, other: &Self) -> bool {
+        println!(
+            "---------- comparing: {} to {} ----------",
+            self.display_name, other.display_name
+        );
+        println!("name match: {}", self.name == other.name);
+        println!(
+            "display_name match: {}",
+            self.display_name == other.display_name
+        );
+        println!("storage match: {}", self.storage == other.storage);
+        println!("is_tmp match: {}", self.is_tmp == other.is_tmp);
+        println!("tmp_of match: {}", self.tmp_of == other.tmp_of);
+        println!(
+            "is_symbolic match: {}",
+            self.is_symbolic == other.is_symbolic
+        );
+        println!("is_return match: {}", self.is_return == other.is_return);
+        println!("ty match: {}", self.ty == other.ty);
+        if self.ty != other.ty {
+            println!("lhs ty: {:#?}", self.ty);
+            println!("rhs ty: {:#?}", other.ty);
+        }
+        println!("-----------------------");
+        self.eq_ignore_loc(other)
     }
 
     pub fn is_tmp(&self) -> bool {
@@ -96,6 +125,7 @@ impl ContextVar {
                 deps.extend(rhs_cvar.dependent_on(analyzer, true)?);
                 Some(deps)
             },
+            is_fundamental: None,
             ty: lhs_cvar.underlying(analyzer)?.ty.clone(),
         })
     }
@@ -121,6 +151,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: false,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::Concrete(concrete_node),
         })
     }
@@ -147,15 +178,16 @@ impl ContextVar {
 
     pub fn as_tmp(
         &self,
-        loc: Loc,
-        ctx: ContextNode,
         analyzer: &mut impl AnalyzerBackend,
+        ctx: ContextNode,
+        loc: Loc,
     ) -> Result<Self, GraphError> {
+        let tmp_num = ctx.new_tmp(analyzer)?;
         let mut new_tmp = self.clone();
         new_tmp.loc = Some(loc);
         new_tmp.is_tmp = true;
-        new_tmp.name = format!("tmp{}({})", ctx.new_tmp(analyzer)?, self.name);
-        new_tmp.display_name = format!("tmp_{}", self.display_name);
+        new_tmp.name = format!("tmp{tmp_num}({})", self.name);
+        new_tmp.display_name = format!("tmp_{tmp_num}({})", self.display_name);
         Ok(new_tmp)
     }
 
@@ -174,6 +206,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::User(
                 TypeNode::Contract(contract_node),
                 SolcRange::try_from_builtin(&Builtin::Address),
@@ -201,6 +234,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::User(TypeNode::Struct(struct_node), None),
         })
     }
@@ -225,6 +259,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::try_from_idx(analyzer, ty_node.0.into()).unwrap(),
         })
     }
@@ -244,6 +279,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: false,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::try_from_idx(analyzer, bn_node.into()).unwrap(),
         })
     }
@@ -485,6 +521,51 @@ impl ContextVar {
         }
     }
 
+    pub fn from_var_node(
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        loc: Loc,
+        var_node: VarNode,
+    ) -> Result<Self, GraphError> {
+        let var = var_node.underlying(analyzer)?;
+        let name = var.name.clone().expect("Variable had no name").name;
+        let storage = if var.in_contract {
+            if !var.attrs.iter().any(|attr| {
+                matches!(
+                    attr,
+                    solang_parser::pt::VariableAttribute::Constant(_)
+                        | solang_parser::pt::VariableAttribute::Immutable(_)
+                )
+            }) {
+                Some(StorageLocation::Storage(var.loc))
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let ty = var_node.init_value(analyzer, arena, false)?;
+
+        if let Some(ty) = ty {
+            Ok(ContextVar {
+                loc: Some(loc),
+                name: name.clone(),
+                display_name: name,
+                storage,
+                is_tmp: false,
+                tmp_of: None,
+                dep_on: None,
+                is_symbolic: true,
+                is_return: false,
+                is_fundamental: None,
+                ty,
+            })
+        } else {
+            Ok(Self::maybe_from_user_ty(analyzer, loc, var_node.0.into()).unwrap())
+        }
+    }
+
     pub fn maybe_from_user_ty(
         analyzer: &impl GraphBackend,
         loc: Loc,
@@ -516,7 +597,11 @@ impl ContextVar {
                     let name = var.name.clone().expect("Variable had no name").name;
                     let storage = if var.in_contract {
                         if !var.attrs.iter().any(|attr| {
-                            matches!(attr, solang_parser::pt::VariableAttribute::Constant(_))
+                            matches!(
+                                attr,
+                                solang_parser::pt::VariableAttribute::Constant(_)
+                                    | solang_parser::pt::VariableAttribute::Immutable(_)
+                            )
                         }) {
                             Some(StorageLocation::Storage(var.loc))
                         } else {
@@ -531,6 +616,10 @@ impl ContextVar {
                     let name = &ty.name.name;
                     (name.clone(), None)
                 }
+                Node::Error(err) => {
+                    let name = err.name.as_ref().unwrap().name.clone();
+                    (name, None)
+                }
                 _ => return None,
             };
 
@@ -544,6 +633,7 @@ impl ContextVar {
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty,
             })
         } else {
@@ -572,6 +662,38 @@ impl ContextVar {
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
+                ty,
+            })
+        } else {
+            None
+        }
+    }
+
+    pub fn maybe_new_from_error_param(
+        analyzer: &impl GraphBackend,
+        loc: Loc,
+        parent_var: &ContextVar,
+        param: ErrorParam,
+        i: usize,
+    ) -> Option<Self> {
+        if let Some(ty) = VarType::try_from_idx(analyzer, param.ty) {
+            let name = if let Some(name) = param.name {
+                name.name
+            } else {
+                i.to_string()
+            };
+            Some(ContextVar {
+                loc: Some(loc),
+                name: parent_var.name.clone() + "." + &*name,
+                display_name: parent_var.name.clone() + "." + &*name,
+                storage: parent_var.storage,
+                is_tmp: false,
+                tmp_of: None,
+                dep_on: None,
+                is_symbolic: true,
+                is_return: false,
+                is_fundamental: None,
                 ty,
             })
         } else {
@@ -597,6 +719,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: true,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::User(
                 TypeNode::Enum(enum_node),
                 Some(enum_node.range_from_variant(variant, analyzer)?),
@@ -623,6 +746,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: index.underlying(analyzer)?.is_symbolic,
             is_return: false,
+            is_fundamental: None,
             ty: parent_var.dynamic_underlying_ty(analyzer)?,
         })
     }
@@ -641,6 +765,7 @@ impl ContextVar {
             dep_on: None,
             is_symbolic: false,
             is_return: false,
+            is_fundamental: None,
             ty: VarType::User(TypeNode::Func(func), None),
         })
     }
@@ -651,16 +776,26 @@ impl ContextVar {
     ) -> Option<Self> {
         if let Some(name) = param.name {
             if let Some(ty) = VarType::try_from_idx(analyzer, param.ty) {
+                let storage = match param.storage {
+                    Some(shared::StorageLocation::Memory(inner)) => {
+                        Some(shared::StorageLocation::MemoryPtr(inner))
+                    }
+                    Some(shared::StorageLocation::Storage(inner)) => {
+                        Some(shared::StorageLocation::StoragePtr(inner))
+                    }
+                    o => o,
+                };
                 Some(ContextVar {
                     loc: Some(param.loc),
                     name: name.name.clone(),
                     display_name: name.name,
-                    storage: param.storage,
+                    storage,
                     is_tmp: false,
                     tmp_of: None,
                     dep_on: None,
                     is_symbolic: true,
                     is_return: false,
+                    is_fundamental: None,
                     ty,
                 })
             } else {
@@ -677,16 +812,26 @@ impl ContextVar {
     ) -> Option<Self> {
         if let Some(name) = ret.name {
             if let Some(ty) = VarType::try_from_idx(analyzer, ret.ty) {
+                let storage = match ret.storage {
+                    Some(shared::StorageLocation::Memory(inner)) => {
+                        Some(shared::StorageLocation::MemoryPtr(inner))
+                    }
+                    Some(shared::StorageLocation::Storage(inner)) => {
+                        Some(shared::StorageLocation::StoragePtr(inner))
+                    }
+                    o => o,
+                };
                 Some(ContextVar {
                     loc: Some(ret.loc),
                     name: name.name.clone(),
                     display_name: name.name,
-                    storage: ret.storage,
+                    storage,
                     is_tmp: false,
                     tmp_of: None,
                     dep_on: None,
                     is_symbolic: true,
                     is_return: true,
+                    is_fundamental: None,
                     ty,
                 })
             } else {
@@ -709,16 +854,26 @@ impl ContextVar {
         };
 
         if let Some(ty) = VarType::try_from_idx(analyzer, ret.ty) {
+            let storage = match ret.storage {
+                Some(shared::StorageLocation::Memory(inner)) => {
+                    Some(shared::StorageLocation::MemoryPtr(inner))
+                }
+                Some(shared::StorageLocation::Storage(inner)) => {
+                    Some(shared::StorageLocation::StoragePtr(inner))
+                }
+                o => o,
+            };
             Ok(Some(ContextVar {
                 loc: Some(ret.loc),
                 name: name.clone(),
                 display_name: name,
-                storage: ret.storage,
+                storage,
                 is_tmp,
                 tmp_of: None,
                 dep_on: None,
                 is_symbolic: true,
                 is_return: true,
+                is_fundamental: None,
                 ty,
             }))
         } else {

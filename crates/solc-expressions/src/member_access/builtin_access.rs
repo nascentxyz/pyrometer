@@ -9,7 +9,7 @@ use graph::{
 };
 use shared::{ExprErr, GraphError, IntoExprErr};
 
-use ethers_core::types::{I256, U256};
+use alloy_primitives::{I256, U256};
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> BuiltinAccess for T where
@@ -129,7 +129,6 @@ pub trait BuiltinAccess:
                     _ => Ok(None),
                 }
             }
-
             Builtin::String => match name.split('(').collect::<Vec<_>>()[0] {
                 "concat" => {
                     let full_name = format!(
@@ -497,7 +496,7 @@ pub trait BuiltinAccess:
                 let max = if size == 256 {
                     I256::MAX
                 } else {
-                    I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::from(1)
+                    I256::from_raw(U256::from(1u8) << U256::from(size - 1)) - I256::ONE
                 };
                 match name {
                     "max" => {
@@ -515,7 +514,7 @@ pub trait BuiltinAccess:
                         Ok((ExprRet::Single(cvar), false))
                     }
                     "min" => {
-                        let min = max * I256::from(-1i32) - I256::from(1i32);
+                        let min = max * I256::MINUS_ONE - I256::ONE;
                         let c = Concrete::Int(size, min);
                         let node = self.add_node(c).into();
                         let mut var = ContextVar::new_from_concrete(loc, ctx, node, self)
@@ -543,7 +542,7 @@ pub trait BuiltinAccess:
                     let max = if size == 256 {
                         U256::MAX
                     } else {
-                        U256::from(2).pow(U256::from(size)) - 1
+                        U256::from(2).pow(U256::from(size)) - U256::from(1)
                     };
                     let c = Concrete::Uint(size, max);
                     let node = self.add_node(c).into();
@@ -559,7 +558,7 @@ pub trait BuiltinAccess:
                     Ok((ExprRet::Single(cvar), false))
                 }
                 "min" => {
-                    let min = U256::zero();
+                    let min = U256::ZERO;
                     let c = Concrete::from(min);
                     let node = self.add_node(c).into();
                     let mut var =

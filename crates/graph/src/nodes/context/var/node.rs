@@ -31,7 +31,7 @@ impl AsDotStr for ContextVarNode {
                     .s,
                 r.evaled_range_max(analyzer, arena)
                     .unwrap()
-                    .to_range_string(true, analyzer, arena)
+                    .to_range_string(false, analyzer, arena)
                     .s
             )
         } else {
@@ -94,6 +94,23 @@ impl ContextVarNode {
         }
     }
 
+    pub fn rangeless_clone(&self, analyzer: &impl GraphBackend) -> Result<ContextVar, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        Ok(ContextVar {
+            loc: underlying.loc,
+            name: underlying.name.clone(),
+            display_name: underlying.display_name.clone(),
+            storage: underlying.storage,
+            is_tmp: underlying.is_tmp,
+            tmp_of: underlying.tmp_of,
+            dep_on: underlying.dep_on.clone(),
+            is_symbolic: underlying.is_symbolic,
+            is_return: underlying.is_return,
+            is_fundamental: underlying.is_fundamental,
+            ty: underlying.ty.rangeless_clone(),
+        })
+    }
+
     pub fn storage<'a>(
         &self,
         analyzer: &'a impl GraphBackend,
@@ -119,11 +136,11 @@ impl ContextVarNode {
         )
     }
 
-    pub fn is_struct_field(&self, analyzer: &impl GraphBackend) -> bool {
-        self.struct_parent(analyzer).is_some()
+    pub fn is_field(&self, analyzer: &impl GraphBackend) -> bool {
+        self.fielded_parent(analyzer).is_some()
     }
 
-    pub fn struct_parent(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+    pub fn fielded_parent(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
         let first = self.first_version(analyzer);
         analyzer
             .graph()
@@ -133,8 +150,8 @@ impl ContextVarNode {
     }
 
     pub fn maybe_ctx(&self, analyzer: &impl GraphBackend) -> Option<ContextNode> {
-        if let Some(struct_parent) = self.struct_parent(analyzer) {
-            struct_parent.maybe_ctx(analyzer)
+        if let Some(fielded_parent) = self.fielded_parent(analyzer) {
+            fielded_parent.maybe_ctx(analyzer)
         } else {
             let first = self.first_version(analyzer);
             analyzer
@@ -234,11 +251,62 @@ impl ContextVarNode {
         Ok(self.ty(analyzer)?.maybe_struct().is_some())
     }
 
-    pub fn struct_to_fields(
+    pub fn is_err(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.ty(analyzer)?.maybe_err().is_some())
+    }
+
+    pub fn is_fielded(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self.is_err(analyzer)? || self.is_struct(analyzer)?)
+    }
+
+    pub fn maybe_field_name(
+        &self,
+        analyzer: &impl GraphBackend,
+    ) -> Result<Option<String>, GraphError> {
+        if self.is_field(analyzer) {
+            let name = self.name(analyzer)?;
+            return Ok(name.split('.').last().map(|i| i.to_string()));
+        }
+        Ok(None)
+    }
+
+    pub fn find_field(
+        &self,
+        analyzer: &impl GraphBackend,
+        to_find: &str,
+    ) -> Result<Option<ContextVarNode>, GraphError> {
+        Ok(self.fielded_to_fields(analyzer)?.iter().find_map(|field| {
+            if let Ok(Some(name)) = field.maybe_field_name(analyzer) {
+                if name == to_find {
+                    return Some(field.latest_version(analyzer));
+                }
+            }
+            None
+        }))
+    }
+
+    pub fn maybe_location_alias(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::LocationAlias))
+            .map(|edge| ContextVarNode::from(edge.target()).latest_version(analyzer))
+    }
+
+    pub fn maybe_incoming_aliases(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Incoming)
+            .filter(|edge| *edge.weight() == Edge::Context(ContextEdge::LocationAlias))
+            .map(|edge| ContextVarNode::from(edge.source()).latest_version(analyzer))
+            .collect()
+    }
+
+    pub fn fielded_to_fields(
         &self,
         analyzer: &impl GraphBackend,
     ) -> Result<Vec<ContextVarNode>, GraphError> {
-        if self.is_struct(analyzer)? {
+        if self.is_struct(analyzer)? || self.maybe_err_node(analyzer)?.is_some() {
             let fields = analyzer
                 .graph()
                 .edges_directed(self.first_version(analyzer).into(), Direction::Incoming)
@@ -251,12 +319,12 @@ impl ContextVarNode {
         }
     }
 
-    pub fn field_of_struct(
+    pub fn field_of_fielded(
         &self,
         name: &str,
         analyzer: &impl GraphBackend,
     ) -> Result<Option<ContextVarNode>, GraphError> {
-        let fields = self.struct_to_fields(analyzer)?;
+        let fields = self.fielded_to_fields(analyzer)?;
         Ok(fields
             .iter()
             .find(|field| {
@@ -310,18 +378,22 @@ impl ContextVarNode {
         }
     }
 
-    pub fn len_var_to_array(
-        &self,
-        analyzer: &impl GraphBackend,
-    ) -> Result<Option<ContextVarNode>, GraphError> {
-        if let Some(arr) = analyzer.search_for_ancestor(
-            self.0.into(),
-            &Edge::Context(ContextEdge::AttrAccess("length")),
-        ) {
-            Ok(Some(ContextVarNode::from(arr).latest_version(analyzer)))
-        } else {
-            Ok(None)
-        }
+    pub fn field_to_fielded(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+        let arr = analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::AttrAccess("field")))
+            .map(|edge| edge.target())?;
+        Some(ContextVarNode::from(arr).latest_version(analyzer))
+    }
+
+    pub fn len_var_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
+        let arr = analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).into(), Direction::Outgoing)
+            .find(|edge| *edge.weight() == Edge::Context(ContextEdge::AttrAccess("length")))
+            .map(|edge| edge.target())?;
+        Some(ContextVarNode::from(arr).latest_version(analyzer))
     }
 
     pub fn index_to_array(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
@@ -335,13 +407,11 @@ impl ContextVarNode {
 
     /// Goes from an index access (i.e. `x[idx]`) to the index (i.e. `idx`)
     pub fn index_access_to_index(&self, analyzer: &impl GraphBackend) -> Option<ContextVarNode> {
-        let index = analyzer.find_child_exclude_via(
-            self.first_version(analyzer).into(),
-            &Edge::Context(ContextEdge::Index),
-            &[],
-            &|idx, _| Some(idx),
-        )?;
-        Some(ContextVarNode::from(index))
+        analyzer
+            .graph()
+            .edges_directed(self.first_version(analyzer).0.into(), Direction::Incoming)
+            .find(|edge| matches!(*edge.weight(), Edge::Context(ContextEdge::Index)))
+            .map(|e| ContextVarNode::from(e.source()))
     }
 
     pub fn index_or_attr_access(&self, analyzer: &impl GraphBackend) -> Vec<Self> {

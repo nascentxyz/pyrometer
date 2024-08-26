@@ -8,9 +8,9 @@ use graph::{
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
-use shared::{ExprErr, FlatExpr, IntoExprErr, RangeArena, StorageLocation};
+use shared::{ExprErr, FlatExpr, GraphError, IntoExprErr, RangeArena, StorageLocation};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> YulFuncCaller for T where
@@ -26,10 +26,12 @@ pub trait YulFuncCaller:
         ctx: ContextNode,
         stack: &mut Vec<FlatExpr>,
         name: &str,
-        inputs: ExprRet,
+        mut inputs: ExprRet,
         assembly_block_idx: usize,
         loc: Loc,
     ) -> Result<(), ExprErr> {
+        self.maybe_location_to_uint(ctx, &mut inputs, loc)
+            .into_expr_err(loc)?;
         match name {
             "caller" => {
                 let t = self.msg_access(ctx, "sender", loc)?;
@@ -58,7 +60,8 @@ pub trait YulFuncCaller:
                     .into_expr_err(loc)?;
                 Ok(())
             }
-            "stop" | "revert" | "selfdestruct" | "invalid" => {
+            "selfdestruct" => ctx.kill(self, loc, KilledKind::Ended).into_expr_err(loc),
+            "stop" | "revert" | "invalid" => {
                 ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)
             }
             "return" => {
@@ -121,12 +124,16 @@ pub trait YulFuncCaller:
                 // we have to cast the inputs into an EVM word, which is effectively a u256.
                 let word_ty = self.builtin_or_add(Builtin::Uint(256));
                 let cast_ty = VarType::try_from_idx(self, word_ty).unwrap();
-                let lhs_paths = ContextVarNode::from(lhs.expect_single().into_expr_err(loc)?);
+                let lhs_paths = ContextVarNode::from(lhs.expect_single().into_expr_err(loc)?)
+                    .as_tmp(self, ctx, loc)
+                    .into_expr_err(loc)?;
                 lhs_paths
                     .cast_from_ty(cast_ty.clone(), self, arena)
                     .into_expr_err(loc)?;
 
-                let rhs_paths = ContextVarNode::from(rhs.expect_single().into_expr_err(loc)?);
+                let rhs_paths = ContextVarNode::from(rhs.expect_single().into_expr_err(loc)?)
+                    .as_tmp(self, ctx, loc)
+                    .into_expr_err(loc)?;
                 rhs_paths
                     .cast_from_ty(cast_ty, self, arena)
                     .into_expr_err(loc)?;
@@ -169,11 +176,11 @@ pub trait YulFuncCaller:
                     .swap_remove(0);
 
                 let res = ContextVarNode::from(result.expect_single().into_expr_err(loc)?);
-                let next = self.advance_var_in_ctx(res, loc, ctx)?;
+                let next = self.advance_var_in_ctx(arena, res, loc, ctx)?;
                 let expr = Elem::Expr(RangeExpr::new(
                     Elem::from(res),
                     RangeOp::Cast,
-                    Elem::from(Concrete::Uint(256, U256::zero())),
+                    Elem::from(Concrete::Uint(256, U256::ZERO)),
                 ));
 
                 next.set_range_min(self, arena, expr.clone())
@@ -195,7 +202,7 @@ pub trait YulFuncCaller:
 
                 let [lhs_paths] = inputs.into_sized();
 
-                let cnode = ConcreteNode::from(self.add_node(Concrete::from(U256::from(0))));
+                let cnode = ConcreteNode::from(self.add_node(Concrete::from(U256::ZERO)));
                 let tmp_true = ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                     .into_expr_err(loc)?;
                 let rhs_paths =
@@ -279,7 +286,7 @@ pub trait YulFuncCaller:
                         .into_expr_err(loc)?;
                 var.display_name = format!("{name}_success");
                 let mut range = SolcRange::try_from_builtin(&b).unwrap();
-                range.min = Elem::from(Concrete::from(U256::from(0)));
+                range.min = Elem::from(Concrete::from(U256::ZERO));
                 range.max = Elem::from(Concrete::from(U256::from(1)));
                 var.ty.set_range(range).into_expr_err(loc)?;
                 let node = self.add_node(var);
@@ -326,7 +333,9 @@ pub trait YulFuncCaller:
                     ) {
                         let res = latest_var.ty(self).into_expr_err(loc)?;
                         if let Some(r) = res.default_range(self).unwrap() {
-                            let new_var = self.advance_var_in_ctx(latest_var, loc, ctx).unwrap();
+                            let new_var = self
+                                .advance_var_in_ctx(arena, latest_var, loc, ctx)
+                                .unwrap();
                             let res = new_var.set_range_min(self, arena, r.min).into_expr_err(loc);
                             let _ = self.add_if_err(res);
                             let res = new_var.set_range_max(self, arena, r.max).into_expr_err(loc);
@@ -373,8 +382,9 @@ pub trait YulFuncCaller:
                         ) {
                             let res = latest_var.ty(self).into_expr_err(loc)?;
                             if let Some(r) = res.default_range(self).unwrap() {
-                                let new_var =
-                                    self.advance_var_in_ctx(latest_var, loc, ctx).unwrap();
+                                let new_var = self
+                                    .advance_var_in_ctx(arena, latest_var, loc, ctx)
+                                    .unwrap();
                                 let res =
                                     new_var.set_range_min(self, arena, r.min).into_expr_err(loc);
                                 let _ = self.add_if_err(res);
@@ -520,6 +530,47 @@ pub trait YulFuncCaller:
                 }
             }
         }
+    }
+
+    fn maybe_location_to_uint(
+        &mut self,
+        ctx: ContextNode,
+        inputs: &mut ExprRet,
+        loc: Loc,
+    ) -> Result<(), GraphError> {
+        match inputs {
+            ExprRet::Null | ExprRet::SingleLiteral(_) | ExprRet::CtxKilled(_) => {}
+            ExprRet::Single(ref mut i) => {
+                let var = ContextVarNode::from(*i);
+                if !var.is_field(self) {
+                    let res = match var.storage(self)? {
+                        Some(StorageLocation::MemoryPtr(..))
+                        | Some(StorageLocation::StoragePtr(..)) => {
+                            // TODO: Whenever we model storage and memory, produce accurate values here
+                            let b = Builtin::Uint(256);
+                            let mut new_var = ContextVar::new_from_builtin(
+                                loc,
+                                self.builtin_or_add(b).into(),
+                                self,
+                            )?;
+                            new_var.display_name = format!("{}.location", var.display_name(self)?);
+                            let node = ContextVarNode::from(self.add_node(new_var));
+                            self.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
+                            ctx.add_var(node, self)?;
+                            node
+                        }
+                        _ => var,
+                    };
+                    *i = res.0.into();
+                }
+            }
+            ExprRet::Multi(ref mut inner) => {
+                inner
+                    .iter_mut()
+                    .try_for_each(|i: &mut ExprRet| self.maybe_location_to_uint(ctx, i, loc))?;
+            }
+        }
+        Ok(())
     }
 
     fn return_yul(

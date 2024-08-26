@@ -2,11 +2,13 @@
 
 use crate::{
     helper::CallerHelper,
-    member_access::{BuiltinAccess, LibraryAccess},
+    member_access::{BuiltinAccess, MemberAccess},
 };
 
 use graph::{
-    nodes::{BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode},
+    nodes::{
+        BuiltInNode, Builtin, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode,
+    },
     AnalyzerBackend, GraphBackend, Node, TypeNode, VarType,
 };
 use shared::{ExprErr, GraphError, NodeIdx};
@@ -60,6 +62,7 @@ pub trait InternalFuncCaller:
             return Ok(vec![]);
         };
 
+        // println!("node: {:#?}", self.node(member));
         let (var_ty, is_storage) = match self.node(member) {
             Node::ContextVar(..) => {
                 let var = ContextVarNode::from(member);
@@ -68,7 +71,7 @@ pub trait InternalFuncCaller:
             _ => (VarType::try_from_idx(self, member).unwrap(), false),
         };
 
-        let mut funcs = self.possible_library_funcs(ctx, var_ty.ty_idx());
+        let mut funcs = self.visible_member_funcs(ctx, member)?;
         match var_ty {
             VarType::BuiltIn(_, _) => {
                 if let Some((ret, is_lib)) = self.builtin_builtin_fn(
@@ -79,6 +82,22 @@ pub trait InternalFuncCaller:
                 )? {
                     if is_lib {
                         funcs.push(ret);
+                    }
+                }
+            }
+            VarType::Concrete(cn) => {
+                // uint160 literal can access address builtins
+                if matches!(cn.underlying(self)?.as_builtin(), Builtin::Uint(160)) {
+                    let bn = self.builtin_or_add(Builtin::Address);
+                    if let Some((ret, is_lib)) = self.builtin_builtin_fn(
+                        BuiltInNode::from(bn),
+                        name,
+                        num_inputs,
+                        is_storage,
+                    )? {
+                        if is_lib {
+                            funcs.push(ret);
+                        }
                     }
                 }
             }
@@ -123,7 +142,7 @@ pub trait InternalFuncCaller:
         num_inputs: usize,
     ) -> Result<(Vec<FunctionNode>, bool), GraphError> {
         match self.node(member) {
-            // Only instantiated contracts and bytes & strings have non-library functions
+            // Only instantiated & abstract contracts and bytes & strings have non-library functions
             Node::ContextVar(..) => {
                 let var = ContextVarNode::from(member);
                 match var.ty(self)? {
@@ -134,6 +153,11 @@ pub trait InternalFuncCaller:
                     }
                     _ => Ok((vec![], false)),
                 }
+            }
+            Node::Contract(..) => {
+                let c = ContractNode::from(member);
+                let func_mapping = c.linearized_functions(self, false)?;
+                Ok((func_mapping.values().copied().collect(), false))
             }
             Node::Builtin(_) => {
                 if let Some((ret, lib)) =
@@ -167,6 +191,14 @@ pub trait InternalFuncCaller:
         } else {
             ctx.visible_funcs(self)?
         };
+
+        tracing::trace!(
+            "visible funcs: {:#?}, looking for: {name}",
+            funcs
+                .iter()
+                .map(|i| i.name(self).unwrap())
+                .collect::<Vec<_>>()
+        );
 
         let mut possible_funcs = funcs
             .iter()
@@ -246,7 +278,12 @@ pub trait InternalFuncCaller:
         constructor: bool,
     ) -> Result<Vec<FunctionNode>, GraphError> {
         let mut potential_mods = if constructor {
-            let cons = ctx.visible_constructors(self)?;
+            let contract = ctx.associated_contract(self)?;
+            let inherited = contract.all_inherited_contracts(self);
+            let cons = inherited
+                .iter()
+                .filter_map(|c| c.constructor(self))
+                .collect::<Vec<_>>();
             cons.into_iter()
                 .filter(|func| {
                     let res = matches!(func.ty(self), Ok(FunctionTy::Constructor));
@@ -295,6 +332,14 @@ pub trait InternalFuncCaller:
                 funcs
             }
         };
+
+        tracing::trace!(
+            "possible funcs: {:#?}",
+            possible_funcs
+                .iter()
+                .map(|i| i.0.name(self).unwrap())
+                .collect::<Vec<_>>()
+        );
 
         let stack = &ctx.underlying(self)?.expr_ret_stack;
         let len = stack.len();

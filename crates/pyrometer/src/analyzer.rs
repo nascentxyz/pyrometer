@@ -4,7 +4,7 @@ use graph::elem::Elem;
 use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use shared::{AnalyzerLike, ApplyStats, GraphLike, NodeIdx, Search};
+use shared::{AnalyzerLike, ApplyStats, GraphLike, InterpStats, NodeIdx, Search};
 use shared::{ExprErr, ExprFlag, FlatExpr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
 use solc_expressions::Flatten;
 use tokio::runtime::Runtime;
@@ -19,7 +19,7 @@ use solang_parser::{
     helpers::CodeLocation,
     pt::{
         ContractDefinition, ContractPart, EnumDefinition, ErrorDefinition, Expression,
-        FunctionDefinition, FunctionTy, Identifier, Import, SourceUnit, SourceUnitPart,
+        FunctionDefinition, FunctionTy, Identifier, Import, ImportPath, SourceUnit, SourceUnitPart,
         StructDefinition, TypeDefinition, Using, UsingList, VariableDefinition,
     },
 };
@@ -73,14 +73,14 @@ pub struct FinalPassItem {
     pub funcs: Vec<FunctionNode>,
     pub usings: Vec<(Using, NodeIdx)>,
     pub inherits: Vec<(ContractNode, Vec<String>)>,
-    pub vars: Vec<(VarNode, NodeIdx)>,
+    pub vars: Vec<VarNode>,
 }
 impl FinalPassItem {
     pub fn new(
         funcs: Vec<FunctionNode>,
         usings: Vec<(Using, NodeIdx)>,
         inherits: Vec<(ContractNode, Vec<String>)>,
-        vars: Vec<(VarNode, NodeIdx)>,
+        vars: Vec<VarNode>,
     ) -> Self {
         Self {
             funcs,
@@ -102,6 +102,8 @@ pub struct Analyzer {
     /// Since we use a staged approach to analysis, we analyze all user types first then go through and patch up any missing or unresolved
     /// parts of a contract (i.e. we parsed a struct which is used as an input to a function signature, we have to know about the struct)
     pub final_pass_items: Vec<FinalPassItem>,
+    /// Functions to process
+    pub funcs: Vec<String>,
     /// The next file number to use when parsing a new file
     pub file_no: usize,
     /// The index of the current `msg` node
@@ -126,6 +128,8 @@ pub struct Analyzer {
     pub builtin_fn_nodes: AHashMap<String, NodeIdx>,
     /// A mapping of solidity builtin function names to their parameters and returns, i.e. `ecrecover` -> `([hash, r, s, v], [signer])`
     pub builtin_fn_inputs: AHashMap<String, (Vec<FunctionParam>, Vec<FunctionReturn>)>,
+    /// Builtin errors
+    pub builtin_errors: AHashMap<String, ErrorNode>,
     /// Accumulated errors that happened while analyzing
     pub expr_errs: Vec<ExprErr>,
     /// The maximum depth to analyze to (i.e. call depth)
@@ -140,6 +144,7 @@ pub struct Analyzer {
     pub fn_calls_fns: BTreeMap<FunctionNode, Vec<FunctionNode>>,
 
     pub apply_stats: ApplyStats,
+    pub interp_stats: InterpStats,
     /// An arena of ranges
     pub range_arena: RangeArena<Elem<Concrete>>,
     /// Parsed functions
@@ -151,6 +156,7 @@ pub struct Analyzer {
     pub expr_flag: Option<ExprFlag>,
     pub current_asm_block: usize,
     pub debug_stack: bool,
+    pub contract_id: usize,
 }
 
 impl Default for Analyzer {
@@ -172,6 +178,7 @@ impl Default for Analyzer {
             builtin_fns: builtin_fns::builtin_fns(),
             builtin_fn_nodes: Default::default(),
             builtin_fn_inputs: Default::default(),
+            builtin_errors: Default::default(),
             expr_errs: Default::default(),
             max_depth: 200,
             max_width: 2_i32.pow(14) as usize, // 14 splits == 16384 contexts
@@ -179,6 +186,7 @@ impl Default for Analyzer {
             debug_panic: false,
             fn_calls_fns: Default::default(),
             apply_stats: ApplyStats::default(),
+            interp_stats: InterpStats::default(),
             range_arena: RangeArena {
                 ranges: vec![Elem::Null],
                 map: {
@@ -193,6 +201,8 @@ impl Default for Analyzer {
             expr_flag: None,
             current_asm_block: 0,
             debug_stack: false,
+            contract_id: 0,
+            funcs: Default::default(),
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
@@ -381,12 +391,22 @@ impl Analyzer {
             let parser_fn = FunctionNode::from(self.add_node(pf));
             self.add_edge(parser_fn, parent, Edge::Func);
 
-            let dummy_ctx = Context::new(parser_fn, "<parser_fn>".to_string(), expr.loc());
+            let dummy_ctx = Context::new(
+                parser_fn,
+                "<parser_fn>".to_string(),
+                expr.loc(),
+                ContractId::Dummy,
+            );
             let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
             self.add_edge(ctx, parser_fn, Edge::Context(ContextEdge::Context));
             ctx
         } else {
-            let dummy_ctx = Context::new(self.parse_fn, "<parser_fn>".to_string(), expr.loc());
+            let dummy_ctx = Context::new(
+                self.parse_fn,
+                "<parser_fn>".to_string(),
+                expr.loc(),
+                ContractId::Dummy,
+            );
             let ctx = ContextNode::from(self.add_node(Node::Context(dummy_ctx)));
             self.add_edge(ctx, self.entry(), Edge::Context(ContextEdge::Context));
             ctx
@@ -402,7 +422,7 @@ impl Analyzer {
             let res = self.add_if_err(res);
 
             if let Some(res) = res {
-                res.last().map(|last| ExprRet::Single(last.1.into()))
+                res.last().map(|last| ExprRet::Single(last.var().into()))
             } else {
                 None
             }
@@ -412,7 +432,7 @@ impl Analyzer {
             let res = self.add_if_err(res);
 
             if let Some(res) = res {
-                res.last().map(|last| ExprRet::Single(last.1.into()))
+                res.last().map(|last| ExprRet::Single(last.var().into()))
             } else {
                 None
             }
@@ -573,11 +593,9 @@ impl Analyzer {
                 .for_each(|(using, scope_node)| {
                     self.parse_using(arena, using, *scope_node);
                 });
-            final_pass_item.vars.iter().for_each(|(var, parent)| {
+            final_pass_item.vars.iter().for_each(|var| {
                 let loc = var.underlying(self).unwrap().loc;
-                let res = var
-                    .parse_initializer(self, arena, *parent)
-                    .into_expr_err(loc);
+                let res = var.parse_initializer(self, arena).into_expr_err(loc);
                 let _ = self.add_if_err(res);
             });
         });
@@ -586,6 +604,7 @@ impl Analyzer {
             final_pass_item.funcs.into_iter().for_each(|func| {
                 if !self.handled_funcs.contains(&func)
                     && func.underlying(self).unwrap().body.is_some()
+                    && (self.funcs.is_empty() || self.funcs.contains(&func.name(self).unwrap()))
                 {
                     self.interpret_entry_func(func, arena);
                 }
@@ -643,7 +662,7 @@ impl Analyzer {
         Vec<FunctionNode>,
         Vec<(Using, NodeIdx)>,
         Vec<(ContractNode, Vec<String>)>,
-        Vec<(VarNode, NodeIdx)>,
+        Vec<VarNode>,
     ) {
         use SourceUnitPart::*;
 
@@ -694,7 +713,7 @@ impl Analyzer {
                 }
 
                 if needs_final_pass {
-                    vars.push((node, parent.into()));
+                    vars.push(node);
                 }
 
                 self.add_edge(node, sup_node, Edge::Var);
@@ -715,7 +734,7 @@ impl Analyzer {
             Annotation(_anno) => todo!(),
             Using(using) => usings.push((*using.clone(), parent.into())),
             StraySemicolon(_loc) => todo!(),
-            PragmaDirective(_, _, _) => {}
+            PragmaDirective(_) => {}
             ImportDirective(import) => {
                 self.parse_import(arena, import, current_path, parent);
             }
@@ -734,6 +753,9 @@ impl Analyzer {
     ) {
         let (import_path, remapping) = match import {
             Import::Plain(import_path, _) => {
+                let ImportPath::Filename(import_path) = import_path else {
+                    panic!("Stubs are not supported");
+                };
                 tracing::trace!("parse_import, path: {:?}", import_path);
                 // find the longest remapping that the import_path starts with
                 let remapping = self
@@ -753,6 +775,9 @@ impl Analyzer {
             Import::Rename(import_path, _elems, _) => {
                 tracing::trace!("parse_import, path: {:?}, Rename", import_path);
                 // find the longest remapping that the import_path starts with
+                let ImportPath::Filename(import_path) = import_path else {
+                    panic!("Stubs are not supported");
+                };
                 let remapping = self
                     .remappings
                     .iter()
@@ -986,7 +1011,7 @@ impl Analyzer {
         Vec<FunctionNode>,
         Vec<(Using, NodeIdx)>,
         Vec<String>,
-        Vec<(VarNode, NodeIdx)>,
+        Vec<VarNode>,
     ) {
         tracing::trace!(
             "Parsing contract {}",
@@ -1049,8 +1074,8 @@ impl Analyzer {
                 node.into()
             };
 
-        inherits.iter().for_each(|contract_node| {
-            self.add_edge(*contract_node, con_node, Edge::InheritedContract);
+        inherits.into_iter().flatten().for_each(|contract_node| {
+            self.add_edge(contract_node, con_node, Edge::InheritedContract);
         });
 
         let mut usings = vec![];
@@ -1076,7 +1101,7 @@ impl Analyzer {
                 }
 
                 if needs_final_pass {
-                    vars.push((node, con_node.into()));
+                    vars.push(node);
                 }
 
                 self.add_edge(node, con_node, Edge::Var);
@@ -1353,8 +1378,46 @@ impl Analyzer {
         arena: &mut RangeArena<Elem<Concrete>>,
         err_def: &ErrorDefinition,
     ) -> ErrorNode {
-        tracing::trace!("Parsing error {:?}", err_def);
-        let err_node = ErrorNode(self.add_node(Error::from(err_def.clone())).index());
+        tracing::trace!("Parsing Error {:?}", err_def);
+        let err = Error::from(err_def.clone());
+        let name = err.name.clone().expect("Error was not named").name;
+        let err_node: ErrorNode = if let Some(user_ty_nodes) = self.user_types.get(&name).cloned() {
+            // assert we only have at most one unknown at a time for a given name
+            assert!(
+                user_ty_nodes.iter().fold(0, |mut acc, idx| {
+                    if matches!(self.node(*idx), Node::Unresolved(_)) {
+                        acc += 1;
+                    }
+                    acc
+                }) <= 1
+            );
+            let mut ret = None;
+            // see if we can fill the unknown with this contract
+            for user_ty_node in user_ty_nodes.iter() {
+                if matches!(self.node(*user_ty_node), Node::Unresolved(_)) {
+                    let unresolved = self.node_mut(*user_ty_node);
+                    *unresolved = Node::Error(err.clone());
+                    ret = Some(ErrorNode::from(*user_ty_node));
+                    break;
+                }
+            }
+            match ret {
+                Some(ret) => ret,
+                None => {
+                    // no unresolved to fill
+                    let node = self.add_node(Node::Error(err));
+                    let entry = self.user_types.entry(name).or_default();
+                    entry.push(node);
+                    node.into()
+                }
+            }
+        } else {
+            let node = self.add_node(err);
+            let entry = self.user_types.entry(name).or_default();
+            entry.push(node);
+            node.into()
+        };
+
         err_def.fields.iter().for_each(|field| {
             let param = ErrorParam::new(self, arena, field.clone());
             let field_node = self.add_node(param);

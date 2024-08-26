@@ -92,6 +92,7 @@ pub trait YulBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Si
                 dep_on: None,
                 is_symbolic: true,
                 is_return: false,
+                is_fundamental: None,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Uint(256))),
                     SolcRange::try_from_builtin(&Builtin::Uint(256)),

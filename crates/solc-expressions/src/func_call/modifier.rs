@@ -63,12 +63,12 @@ pub trait ModifierCaller:
                 );
             }
 
-            let inputs = ExprRet::Multi(
-                mod_state
-                    .parent_ctx
-                    .pop_n_latest_exprs(input_exprs.len(), loc, analyzer)
-                    .into_expr_err(loc)?,
-            );
+            let mut backwards_inputs = mod_state
+                .parent_ctx
+                .pop_n_latest_exprs(input_exprs.len(), loc, analyzer)
+                .into_expr_err(loc)?;
+            backwards_inputs.reverse();
+            let inputs = ExprRet::Multi(backwards_inputs);
 
             if analyzer.debug_stack() {
                 tracing::trace!("modifier inputs: {}", inputs.debug_str(analyzer));
@@ -81,6 +81,9 @@ pub trait ModifierCaller:
                 mod_node,
                 None,
                 Some(mod_state.clone()),
+                None,
+                None,
+                mod_state.try_catch,
             )
         })
     }
@@ -126,6 +129,8 @@ pub trait ModifierCaller:
                         loc,
                         analyzer,
                         Some(modifier_state.clone()),
+                        ctx.contract_id(analyzer).unwrap(),
+                        true,
                     )
                     .unwrap();
 
@@ -151,9 +156,15 @@ pub trait ModifierCaller:
                         false,
                     );
 
-                    let new_parent_subctx =
-                        Context::add_subctx(subctx_kind, modifier_state.loc, analyzer, None)
-                            .unwrap();
+                    let new_parent_subctx = Context::add_subctx(
+                        subctx_kind,
+                        modifier_state.loc,
+                        analyzer,
+                        None,
+                        ctx.contract_id(analyzer).unwrap(),
+                        true,
+                    )
+                    .unwrap();
                     ctx.set_child_call(new_parent_subctx, analyzer)
                         .into_expr_err(modifier_state.loc)?;
 
@@ -165,6 +176,7 @@ pub trait ModifierCaller:
                         new_parent_subctx,
                         modifier_state.parent_fn,
                         None,
+                        modifier_state.try_catch,
                     )
                 }
             },

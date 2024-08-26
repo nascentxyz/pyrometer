@@ -226,6 +226,78 @@ impl SubContextKind {
                 .clone(),
         };
 
+        let visible_errors = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => parent_ctx
+                .underlying(analyzer)?
+                .cache
+                .visible_errors
+                .clone(),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_errors
+                .clone(),
+        };
+
+        let visible_contracts = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => parent_ctx
+                .underlying(analyzer)?
+                .cache
+                .visible_contracts
+                .clone(),
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_contracts
+                .clone(),
+        };
+
+        let visible_enums = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => {
+                parent_ctx.underlying(analyzer)?.cache.visible_enums.clone()
+            }
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_enums
+                .clone(),
+        };
+
+        let visible_tys = match self {
+            SubContextKind::ExternalFnCall { .. } => None,
+            SubContextKind::InternalFnCall { .. } => None,
+            SubContextKind::Fork { parent_ctx, .. }
+            | SubContextKind::Loop { parent_ctx }
+            | SubContextKind::Dummy { parent_ctx } => {
+                parent_ctx.underlying(analyzer)?.cache.visible_tys.clone()
+            }
+            SubContextKind::FnReturn {
+                continuation_of, ..
+            } => continuation_of
+                .underlying(analyzer)?
+                .cache
+                .visible_tys
+                .clone(),
+        };
+
         let first_ancestor = match self {
             SubContextKind::ExternalFnCall { .. } => None,
             SubContextKind::InternalFnCall { .. } => None,
@@ -242,9 +314,14 @@ impl SubContextKind {
         Ok(ContextCache {
             visible_funcs,
             visible_structs,
+            visible_contracts,
+            visible_enums,
+            visible_errors,
+            visible_tys,
             first_ancestor,
             vars: Default::default(),
             tmp_vars: Default::default(),
+            storage_vars: Default::default(),
             associated_source: None,
             associated_contract: None,
         })
@@ -311,6 +388,33 @@ impl SubContextKind {
     }
 }
 
+#[derive(Debug, Clone, Eq, PartialEq, Copy)]
+pub enum ContractId {
+    Id(usize),
+    Address(ContextVarNode),
+    Dummy,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub enum RetType {
+    Error(Loc, ContextVarNode),
+    Success(Loc, ContextVarNode),
+}
+
+impl RetType {
+    pub fn loc(&self) -> Loc {
+        match self {
+            RetType::Error(loc, ..) | RetType::Success(loc, ..) => *loc,
+        }
+    }
+
+    pub fn var(&self) -> ContextVarNode {
+        match self {
+            RetType::Error(_, var) | RetType::Success(_, var) => *var,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct Context {
     /// The current parse index of the stack
@@ -319,6 +423,9 @@ pub struct Context {
     pub parent_fn: FunctionNode,
     /// Whether this function call is actually a modifier call
     pub modifier_state: Option<ModifierState>,
+
+    /// The address that is being called
+    pub contract_id: ContractId,
 
     pub subctx_kind: Option<SubContextKind>,
     /// Variables whose bounds are required to be met for this context fork to exist. i.e. a conditional operator
@@ -336,7 +443,7 @@ pub struct Context {
     /// The location in source of the context
     pub loc: Loc,
     /// The return node and the return location
-    pub ret: Vec<(Loc, ContextVarNode)>,
+    pub ret: Vec<RetType>,
     /// Depth tracker
     pub depth: usize,
     /// Width tracker
@@ -363,11 +470,17 @@ impl From<Context> for Node {
 
 impl Context {
     /// Creates a new context from a function
-    pub fn new(parent_fn: FunctionNode, fn_name: String, loc: Loc) -> Self {
+    pub fn new(
+        parent_fn: FunctionNode,
+        fn_name: String,
+        loc: Loc,
+        contract_id: ContractId,
+    ) -> Self {
         Context {
             parse_idx: 0,
             parent_fn,
             subctx_kind: None,
+            contract_id,
             path: fn_name,
             tmp_var_ctr: 0,
             killed: None,
@@ -393,6 +506,7 @@ impl Context {
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
         modifier_state: Option<ModifierState>,
+        contract_id: ContractId,
     ) -> Result<Self, GraphError> {
         let parse_idx = subctx_kind.init_parse_idx(analyzer);
 
@@ -447,6 +561,7 @@ impl Context {
             parse_idx,
             parent_fn,
             subctx_kind: Some(subctx_kind),
+            contract_id,
             path,
             ctx_deps,
             expr_ret_stack,
@@ -478,11 +593,15 @@ impl Context {
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
         modifier_state: Option<ModifierState>,
+        contract_id: ContractId,
+        set_edges: bool,
     ) -> Result<ContextNode, GraphError> {
-        let ctx = Context::new_subctx(subctx_kind, loc, analyzer, modifier_state)?;
+        let ctx = Context::new_subctx(subctx_kind, loc, analyzer, modifier_state, contract_id)?;
         let ctx_node = ContextNode::from(analyzer.add_node(ctx));
-        if let Some(cont) = ctx_node.underlying(analyzer)?.continuation_of() {
-            analyzer.add_edge(ctx_node, cont, Edge::Context(ContextEdge::Continue("TODO")));
+        if set_edges {
+            if let Some(cont) = ctx_node.underlying(analyzer)?.continuation_of() {
+                analyzer.add_edge(ctx_node, cont, Edge::Context(ContextEdge::Continue("TODO")));
+            }
         }
         Ok(ctx_node)
     }
@@ -501,30 +620,48 @@ impl Context {
         analyzer: &mut impl AnalyzerBackend,
         parent_ctx: ContextNode,
         loc: Loc,
+        set_edges: bool,
     ) -> Result<(ContextNode, ContextNode), GraphError> {
+        let contract_id = parent_ctx.contract_id(analyzer)?;
         let true_subctx_kind = SubContextKind::new_fork(parent_ctx, true);
-        let true_subctx = Context::add_subctx(true_subctx_kind, loc, analyzer, None)?;
+        let true_subctx = Context::add_subctx(
+            true_subctx_kind,
+            loc,
+            analyzer,
+            None,
+            contract_id,
+            set_edges,
+        )?;
 
         let false_subctx_kind = SubContextKind::new_fork(parent_ctx, false);
-        let false_subctx = Context::add_subctx(false_subctx_kind, loc, analyzer, None)?;
+        let false_subctx = Context::add_subctx(
+            false_subctx_kind,
+            loc,
+            analyzer,
+            None,
+            contract_id,
+            set_edges,
+        )?;
 
         parent_ctx.set_child_fork(true_subctx, false_subctx, analyzer)?;
         let ctx_fork = analyzer.add_node(Node::ContextFork);
-        analyzer.add_edge(
-            ctx_fork,
-            parent_ctx,
-            Edge::Context(ContextEdge::ContextFork),
-        );
-        analyzer.add_edge(
-            NodeIdx::from(true_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
-        analyzer.add_edge(
-            NodeIdx::from(false_subctx.0),
-            ctx_fork,
-            Edge::Context(ContextEdge::Subcontext),
-        );
+        if set_edges {
+            analyzer.add_edge(
+                ctx_fork,
+                parent_ctx,
+                Edge::Context(ContextEdge::ContextFork),
+            );
+            analyzer.add_edge(
+                NodeIdx::from(true_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
+            analyzer.add_edge(
+                NodeIdx::from(false_subctx.0),
+                ctx_fork,
+                Edge::Context(ContextEdge::Subcontext),
+            );
+        }
         Ok((true_subctx, false_subctx))
     }
 
@@ -533,8 +670,9 @@ impl Context {
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
     ) -> Result<ContextNode, GraphError> {
+        let contract_id = parent_ctx.contract_id(analyzer)?;
         let subctx_kind = SubContextKind::Loop { parent_ctx };
-        let loop_ctx = Context::add_subctx(subctx_kind, loc, analyzer, None)?;
+        let loop_ctx = Context::add_subctx(subctx_kind, loc, analyzer, None, contract_id, true)?;
         parent_ctx.set_child_call(loop_ctx, analyzer)?;
         analyzer.add_edge(loop_ctx, parent_ctx, Edge::Context(ContextEdge::Loop));
         Ok(loop_ctx)

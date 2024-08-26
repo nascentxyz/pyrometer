@@ -1,4 +1,4 @@
-use crate::{BinOp, Variable};
+use crate::{BinOp, ErrType, SolcError, Variable};
 
 use graph::{
     elem::*,
@@ -11,7 +11,6 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::I256;
 use solang_parser::pt::Loc;
 
 use std::cmp::Ordering;
@@ -28,6 +27,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         lhs_paths: &ExprRet,
         rhs_paths: &ExprRet,
         op: RangeOp,
+        err: Option<ErrType>,
         loc: Loc,
     ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
@@ -40,6 +40,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     &ExprRet::Single(*lhs),
                     &ExprRet::Single(*rhs),
                     op,
+                    err,
                     loc,
                 ),
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
@@ -47,37 +48,61 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self, arena)
                     .into_expr_err(loc)?;
-                self.handle_require_inner(arena, ctx, &ExprRet::Single(*lhs), rhs_paths, op, loc)
+                self.handle_require_inner(
+                    arena,
+                    ctx,
+                    &ExprRet::Single(*lhs),
+                    rhs_paths,
+                    op,
+                    err,
+                    loc,
+                )
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
                 // ie: require(a == 5);
                 ContextVarNode::from(*rhs)
                     .cast_from(&ContextVarNode::from(*lhs), self, arena)
                     .into_expr_err(loc)?;
-                self.handle_require_inner(arena, ctx, lhs_paths, &ExprRet::Single(*rhs), op, loc)
+                self.handle_require_inner(
+                    arena,
+                    ctx,
+                    lhs_paths,
+                    &ExprRet::Single(*rhs),
+                    op,
+                    err,
+                    loc,
+                )
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
                 // ie: require(a == b);
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
-                let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
+                let new_lhs = self.advance_var_in_ctx(arena, lhs_cvar, loc, ctx)?;
                 let rhs_cvar =
                     ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
-                let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
+                let new_rhs = self.advance_var_in_ctx(arena, rhs_cvar, loc, ctx)?;
 
-                self.require(arena, ctx, new_lhs, new_rhs, op, loc)?;
+                self.require(
+                    arena,
+                    ctx,
+                    new_lhs,
+                    new_rhs,
+                    op,
+                    err.unwrap_or_default(),
+                    loc,
+                )?;
                 Ok(())
             }
             (l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_), ExprRet::Multi(rhs_sides)) => {
                 // ie: require(a == (b, c)); (not possible)
                 rhs_sides.iter().try_for_each(|expr_ret| {
-                    self.handle_require_inner(arena, ctx, l, expr_ret, op, loc)
+                    self.handle_require_inner(arena, ctx, l, expr_ret, op, err, loc)
                 })
             }
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
                 // ie: require((a, b) == c); (not possible)
                 lhs_sides.iter().try_for_each(|expr_ret| {
-                    self.handle_require_inner(arena, ctx, expr_ret, r, op, loc)
+                    self.handle_require_inner(arena, ctx, expr_ret, r, op, err, loc)
                 })
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
@@ -94,6 +119,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                                 lhs_expr_ret,
                                 rhs_expr_ret,
                                 op,
+                                err,
                                 loc,
                             )
                         },
@@ -101,7 +127,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 } else {
                     // ie: require((a, b) == (c, d, e)); (not possible)
                     rhs_sides.iter().try_for_each(|rhs_expr_ret| {
-                        self.handle_require_inner(arena, ctx, lhs_paths, rhs_expr_ret, op, loc)
+                        self.handle_require_inner(arena, ctx, lhs_paths, rhs_expr_ret, op, err, loc)
                     })
                 }
             }
@@ -119,6 +145,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
         mut new_lhs: ContextVarNode,
         mut new_rhs: ContextVarNode,
         op: RangeOp,
+        err: ErrType,
         loc: Loc,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
         tracing::trace!(
@@ -146,6 +173,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     (true, true) => {
                         if self.const_killable(arena, op, lhs_range, rhs_range) {
                             tracing::trace!("const killable");
+                            let err = self.add_err_node(ctx, err, loc)?;
+                            ctx.add_return_node(loc, err, self).into_expr_err(loc)?;
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -158,6 +187,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             arena, ctx, loc, rhs_op, new_lhs, new_rhs, rhs_range,
                         )? {
                             tracing::trace!("half-const killable");
+                            let err = self.add_err_node(ctx, err, loc)?;
+                            ctx.add_return_node(loc, err, self).into_expr_err(loc)?;
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -167,6 +198,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             arena, ctx, loc, op, new_rhs, new_lhs, lhs_range,
                         )? {
                             tracing::trace!("half-const killable");
+                            let err = self.add_err_node(ctx, err, loc)?;
+                            ctx.add_return_node(loc, err, self).into_expr_err(loc)?;
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -176,6 +209,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                             arena, ctx, loc, op, new_lhs, new_rhs, lhs_range, rhs_range,
                         )? {
                             tracing::trace!("nonconst killable");
+                            let err = self.add_err_node(ctx, err, loc)?;
+                            ctx.add_return_node(loc, err, self).into_expr_err(loc)?;
                             ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                             return Ok(None);
                         }
@@ -233,6 +268,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
                     || new_rhs.is_symbolic(self).into_expr_err(loc)?,
                 is_return: false,
+                is_fundamental: None,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                     // we set the minimum to `true` so that if `elem` evaluates to false,
@@ -284,6 +320,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 is_symbolic: new_lhs.is_symbolic(self).into_expr_err(loc)?
                     || new_rhs.is_symbolic(self).into_expr_err(loc)?,
                 is_return: false,
+                is_fundamental: None,
                 ty: VarType::BuiltIn(
                     BuiltInNode::from(self.builtin_or_add(Builtin::Bool)),
                     // we set the minimum to `true` so that if `elem` evaluates to false,
@@ -309,6 +346,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 .into_expr_err(loc)?;
 
             if any_unsat || ctx.unreachable(self, arena).into_expr_err(loc)? {
+                let err = self.add_err_node(ctx, err, loc)?;
+                ctx.add_return_node(loc, err, self).into_expr_err(loc)?;
                 ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
                 return Ok(None);
             }
@@ -751,8 +790,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     lhs_elem,
                 ));
 
-                let new_new_lhs = self.advance_var_in_ctx(new_lhs, loc, ctx)?;
-                let new_new_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
+                let new_new_lhs = self.advance_var_in_ctx(arena, new_lhs, loc, ctx)?;
+                let new_new_rhs = self.advance_var_in_ctx(arena, new_rhs, loc, ctx)?;
 
                 new_new_lhs
                     .set_range_min(self, arena, new_min.clone())
@@ -785,8 +824,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
-                let new_new_lhs = self.advance_var_in_ctx(new_lhs, loc, ctx)?;
-                let new_new_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
+                let new_new_lhs = self.advance_var_in_ctx(arena, new_lhs, loc, ctx)?;
+                let new_new_rhs = self.advance_var_in_ctx(arena, new_rhs, loc, ctx)?;
 
                 new_new_lhs
                     .latest_version_or_inherited_in_ctx(ctx, self)
@@ -840,331 +879,5 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             }
             e => todo!("Non-comparator in require, {e:?}"),
         }
-    }
-
-    /// Recursively updates the range for a
-    fn range_recursion(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        tmp_construction: TmpConstruction,
-        (flip_op, no_flip_op): (RangeOp, RangeOp),
-        rhs_cvar: ContextVarNode,
-        ctx: ContextNode,
-        loc: Loc,
-        any_unsat: &mut bool,
-    ) -> Result<(), ExprErr> {
-        tracing::trace!("Recursing through range");
-        // handle lhs
-        let Some(inverse) = tmp_construction.op.inverse() else {
-            return Ok(());
-        };
-
-        if !tmp_construction
-            .lhs
-            .is_const(self, arena)
-            .into_expr_err(loc)?
-        {
-            tracing::trace!("handling lhs range recursion");
-            let adjusted_gt_rhs = ContextVarNode::from({
-                let tmp = self.op(
-                    arena,
-                    loc,
-                    rhs_cvar,
-                    tmp_construction.rhs.expect("No rhs in tmp_construction"),
-                    ctx,
-                    inverse,
-                    false,
-                )?;
-                if matches!(tmp, ExprRet::CtxKilled(_)) {
-                    ctx.push_expr(tmp, self).into_expr_err(loc)?;
-                    return Ok(());
-                }
-                tmp.expect_single().into_expr_err(loc)?
-            });
-            let new_underlying_lhs = self.advance_var_in_ctx(
-                tmp_construction
-                    .lhs
-                    .latest_version_or_inherited_in_ctx(ctx, self),
-                loc,
-                ctx,
-            )?;
-            if let Some(lhs_range) = new_underlying_lhs
-                .underlying(self)
-                .into_expr_err(loc)?
-                .ty
-                .range(self)
-                .into_expr_err(loc)?
-            {
-                if let Some(_rhs_range) = adjusted_gt_rhs
-                    .underlying(self)
-                    .into_expr_err(loc)?
-                    .ty
-                    .ref_range(self)
-                    .into_expr_err(loc)?
-                {
-                    let lhs_range_fn = SolcRange::dyn_fn_from_op(no_flip_op);
-                    let new_lhs_range = lhs_range_fn(lhs_range, adjusted_gt_rhs);
-
-                    new_underlying_lhs
-                        .set_range_min(self, arena, new_lhs_range.range_min().into_owned())
-                        .into_expr_err(loc)?;
-                    new_underlying_lhs
-                        .set_range_max(self, arena, new_lhs_range.range_max().into_owned())
-                        .into_expr_err(loc)?;
-
-                    if new_lhs_range.unsat(self, arena) {
-                        *any_unsat = true;
-                        ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    if let Some(tmp) = new_underlying_lhs.tmp_of(self).into_expr_err(loc)? {
-                        self.range_recursion(
-                            arena,
-                            tmp,
-                            (flip_op, no_flip_op),
-                            adjusted_gt_rhs,
-                            ctx,
-                            loc,
-                            any_unsat,
-                        )?;
-                    }
-                }
-            }
-        }
-
-        // handle rhs
-        if let Some(rhs) = tmp_construction.rhs {
-            if !rhs.is_const(self, arena).into_expr_err(loc)? {
-                tracing::trace!("handling rhs range recursion");
-                let (needs_inverse, adjusted_gt_rhs) = match tmp_construction.op {
-                    RangeOp::Sub(..) => {
-                        let concrete = ConcreteNode(
-                            self.add_node(Concrete::Int(256, I256::from(-1i32))).index(),
-                        );
-                        let lhs_cvar = ContextVar::new_from_concrete(loc, ctx, concrete, self)
-                            .into_expr_err(loc)?;
-                        let tmp_lhs = ContextVarNode::from(self.add_node(lhs_cvar));
-
-                        // tmp_rhs = rhs_cvar * -1
-                        let tmp_rhs = self.op(
-                            arena,
-                            loc,
-                            rhs_cvar,
-                            tmp_lhs,
-                            ctx,
-                            RangeOp::Mul(false),
-                            false,
-                        )?;
-                        if matches!(tmp_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(tmp_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let tmp_rhs =
-                            ContextVarNode::from(tmp_rhs.expect_single().into_expr_err(loc)?);
-
-                        // new_rhs = (rhs_cvar * -1) + tmp_construction.lhs
-                        let new_rhs = self.op(
-                            arena,
-                            loc,
-                            tmp_rhs,
-                            tmp_construction.lhs,
-                            ctx,
-                            inverse,
-                            false,
-                        )?;
-                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let new_rhs =
-                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        (true, new_rhs)
-                    }
-                    RangeOp::Add(..) => {
-                        let new_rhs = self.op(
-                            arena,
-                            loc,
-                            rhs_cvar,
-                            tmp_construction.lhs,
-                            ctx,
-                            inverse,
-                            false,
-                        )?;
-                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let new_rhs =
-                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        (false, new_rhs)
-                    }
-                    RangeOp::Mul(..) => {
-                        let new_rhs = self.op(
-                            arena,
-                            loc,
-                            rhs_cvar,
-                            tmp_construction.lhs,
-                            ctx,
-                            inverse,
-                            false,
-                        )?;
-                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let new_rhs =
-                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        (false, new_rhs)
-                    }
-                    RangeOp::Div(..) => {
-                        let new_rhs = self.op(
-                            arena,
-                            loc,
-                            rhs_cvar,
-                            tmp_construction.lhs,
-                            ctx,
-                            inverse,
-                            false,
-                        )?;
-                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let new_rhs =
-                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        (false, new_rhs)
-                    }
-                    RangeOp::Shl => {
-                        let new_rhs = self.op(
-                            arena,
-                            loc,
-                            rhs_cvar,
-                            tmp_construction.lhs,
-                            ctx,
-                            inverse,
-                            false,
-                        )?;
-                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let new_rhs =
-                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        (false, new_rhs)
-                    }
-                    RangeOp::Shr => {
-                        let new_rhs = self.op(
-                            arena,
-                            loc,
-                            rhs_cvar,
-                            tmp_construction.lhs,
-                            ctx,
-                            inverse,
-                            false,
-                        )?;
-                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let new_rhs =
-                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        (false, new_rhs)
-                    }
-                    RangeOp::Eq => {
-                        let new_rhs = self.op(
-                            arena,
-                            loc,
-                            rhs_cvar,
-                            tmp_construction.lhs,
-                            ctx,
-                            inverse,
-                            false,
-                        )?;
-                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let new_rhs =
-                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        (false, new_rhs)
-                    }
-                    RangeOp::Neq => {
-                        let new_rhs = self.op(
-                            arena,
-                            loc,
-                            rhs_cvar,
-                            tmp_construction.lhs,
-                            ctx,
-                            inverse,
-                            false,
-                        )?;
-                        if matches!(new_rhs, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(new_rhs, self).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        let new_rhs =
-                            ContextVarNode::from(new_rhs.expect_single().into_expr_err(loc)?);
-                        (false, new_rhs)
-                    }
-                    e => panic!("here {e:?}"),
-                };
-
-                let new_underlying_rhs = self.advance_var_in_ctx(
-                    rhs.latest_version_or_inherited_in_ctx(ctx, self),
-                    loc,
-                    ctx,
-                )?;
-                if let Some(lhs_range) = new_underlying_rhs
-                    .underlying(self)
-                    .into_expr_err(loc)?
-                    .ty
-                    .range(self)
-                    .into_expr_err(loc)?
-                {
-                    if let Some(_rhs_range) = adjusted_gt_rhs
-                        .underlying(self)
-                        .into_expr_err(loc)?
-                        .ty
-                        .ref_range(self)
-                        .into_expr_err(loc)?
-                    {
-                        let new_lhs_range = if needs_inverse {
-                            let lhs_range_fn = SolcRange::dyn_fn_from_op(flip_op);
-                            lhs_range_fn(lhs_range, adjusted_gt_rhs)
-                        } else {
-                            let lhs_range_fn = SolcRange::dyn_fn_from_op(no_flip_op);
-                            lhs_range_fn(lhs_range, adjusted_gt_rhs)
-                        };
-
-                        new_underlying_rhs
-                            .set_range_min(self, arena, new_lhs_range.range_min().into_owned())
-                            .into_expr_err(loc)?;
-                        new_underlying_rhs
-                            .set_range_max(self, arena, new_lhs_range.range_max().into_owned())
-                            .into_expr_err(loc)?;
-
-                        if new_lhs_range.unsat(self, arena) {
-                            *any_unsat = true;
-                            ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-
-                        if let Some(tmp) = new_underlying_rhs.tmp_of(self).into_expr_err(loc)? {
-                            self.range_recursion(
-                                arena,
-                                tmp,
-                                (flip_op, no_flip_op),
-                                adjusted_gt_rhs,
-                                ctx,
-                                loc,
-                                any_unsat,
-                            )?;
-                        }
-                    }
-                }
-            }
-        }
-
-        Ok(())
     }
 }

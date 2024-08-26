@@ -636,7 +636,7 @@ impl GraphDot for Analyzer {
             .iter()
             .filter(|child| {
                 if matches!(g.node(**child), Node::ContextVar(..)) {
-                    ContextVarNode::from(**child).is_struct(g).unwrap_or(false)
+                    ContextVarNode::from(**child).is_fielded(g).unwrap_or(false)
                 } else {
                     false
                 }

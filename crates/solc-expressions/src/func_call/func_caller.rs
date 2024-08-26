@@ -1,16 +1,15 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
 use crate::{
-    func_call::{apply::FuncApplier, modifier::ModifierCaller},
-    helper::CallerHelper,
+    func_call::apply::FuncApplier, func_call::modifier::ModifierCaller, helper::CallerHelper,
     ContextBuilder, Flatten,
 };
 
 use graph::{
     elem::Elem,
     nodes::{
-        Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
-        FunctionParamNode, ModifierState, SubContextKind,
+        Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractId, EnvCtx, ExprRet,
+        FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
@@ -36,6 +35,9 @@ pub trait FuncCaller:
         func: FunctionNode,
         func_call_str: Option<&str>,
         modifier_state: Option<ModifierState>,
+        msg: Option<EnvCtx>,
+        ext_target: Option<ContractId>,
+        try_catch: bool,
     ) -> Result<(), ExprErr> {
         let params = func.params(self);
         let input_paths = input_paths.clone().flatten();
@@ -62,6 +64,9 @@ pub trait FuncCaller:
                         &params,
                         func_call_str,
                         &modifier_state,
+                        msg.clone(),
+                        ext_target,
+                        try_catch,
                     )
                 })
             }
@@ -97,6 +102,9 @@ pub trait FuncCaller:
                             &params,
                             func_call_str,
                             &modifier_state,
+                            msg.clone(),
+                            ext_target,
+                            try_catch,
                         )
                     })
                 } else {
@@ -121,6 +129,9 @@ pub trait FuncCaller:
                     &params,
                     func_call_str,
                     &modifier_state,
+                    msg.clone(),
+                    ext_target,
+                    try_catch,
                 )
             }),
             e => todo!("here: {:?}", e),
@@ -140,6 +151,9 @@ pub trait FuncCaller:
         params: &[FunctionParamNode],
         func_call_str: Option<&str>,
         modifier_state: &Option<ModifierState>,
+        env: Option<EnvCtx>,
+        ext_target: Option<ContractId>,
+        try_catch: bool,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
             "Calling function: {} in context: {}",
@@ -161,8 +175,12 @@ pub trait FuncCaller:
         let callee_ctx = if entry_call {
             ctx
         } else {
-            self.create_call_ctx(ctx, loc, func_node, modifier_state.clone())?
+            self.create_call_ctx(ctx, loc, func_node, modifier_state.clone(), ext_target)?
         };
+
+        if entry_call || ext_target.is_some() {
+            self.add_env(callee_ctx, func_node, env, loc)?;
+        }
 
         // handle remapping of variable names and bringing variables into the new context
         let renamed_inputs =
@@ -210,6 +228,7 @@ pub trait FuncCaller:
                         callee_ctx,
                         ctx,
                         renamed_inputs.clone(),
+                        try_catch,
                     );
                     for _ in 0..mods.len() {
                         analyzer.call_modifier_for_fn(
@@ -229,6 +248,7 @@ pub trait FuncCaller:
                         callee_ctx,
                         func_node,
                         func_call_str,
+                        try_catch,
                     )
                 } else if let Some(mod_state) =
                     &ctx.underlying(analyzer).into_expr_err(loc)?.modifier_state
@@ -248,6 +268,7 @@ pub trait FuncCaller:
                             callee_ctx,
                             func_node,
                             func_call_str,
+                            try_catch,
                         )
                     }
                 } else if !mods.is_empty() {
@@ -259,6 +280,7 @@ pub trait FuncCaller:
                         callee_ctx,
                         ctx,
                         renamed_inputs.clone(),
+                        try_catch,
                     );
                     analyzer.call_modifier_for_fn(arena, loc, callee_ctx, func_node, state)
                 } else {
@@ -270,6 +292,7 @@ pub trait FuncCaller:
                         callee_ctx,
                         func_node,
                         func_call_str,
+                        try_catch,
                     )
                 }
             },
@@ -286,10 +309,15 @@ pub trait FuncCaller:
         callee_ctx: ContextNode,
         func_node: FunctionNode,
         func_call_str: Option<&str>,
+        try_catch: bool,
     ) -> Result<(), ExprErr> {
-        tracing::trace!("executing: {}", func_node.name(self).into_expr_err(loc)?);
+        tracing::trace!(
+            "executing: {}, try_catch: {try_catch}",
+            func_node.name(self).into_expr_err(loc)?
+        );
         if let Some(body) = func_node.underlying(self).into_expr_err(loc)?.body.clone() {
             // add return nodes into the subctx
+            let mut ret_vars = vec![];
             #[allow(clippy::unnecessary_to_owned)]
             func_node.returns(arena, self).into_iter().for_each(|ret| {
                 if let Some(var) =
@@ -298,6 +326,7 @@ pub trait FuncCaller:
                     let cvar = self.add_node(var);
                     callee_ctx.add_var(cvar.into(), self).unwrap();
                     self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
+                    ret_vars.push(cvar);
                 }
             });
 
@@ -311,12 +340,18 @@ pub trait FuncCaller:
                 .clone()
             {
                 if mod_state.num == 0 {
-                    return self.ctx_rets(arena, loc, mod_state.parent_caller_ctx, callee_ctx);
+                    return self.ctx_rets(
+                        arena,
+                        loc,
+                        mod_state.parent_caller_ctx,
+                        callee_ctx,
+                        try_catch,
+                    );
                 }
             }
 
             if callee_ctx != caller_ctx {
-                self.ctx_rets(arena, loc, caller_ctx, callee_ctx)
+                self.ctx_rets(arena, loc, caller_ctx, callee_ctx, try_catch)
             } else {
                 Ok(())
             }
@@ -331,6 +366,8 @@ pub trait FuncCaller:
                     .into_expr_err(loc)?
                     .modifier_state
                     .clone(),
+                caller_ctx.contract_id(self).into_expr_err(loc)?,
+                true,
             )
             .unwrap();
 
@@ -368,6 +405,13 @@ pub trait FuncCaller:
                         ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
                         analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
                         analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Return));
+
+                        let as_var = ContextVarNode::from(node);
+                        as_var.maybe_add_fields(analyzer).into_expr_err(loc)?;
+                        as_var
+                            .maybe_add_len_inplace(analyzer, arena, ctx, loc)
+                            .into_expr_err(loc)?;
+
                         ctx.push_expr(ExprRet::Single(node), analyzer)
                             .into_expr_err(loc)?;
                         Ok(())

@@ -1,18 +1,20 @@
+use crate::range::elem::RangeArenaLike;
 use crate::{
     elem::Elem,
     nodes::{
-        Builtin, Concrete, ContextNode, ContextVarNode, EnumNode, ErrorNode, StructNode, TyNode,
+        BuiltInNode, Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, EnumNode,
+        ErrorNode, Fielded, StructNode, TyNode,
     },
     range::{
         elem::{RangeElem, RangeExpr, RangeOp},
         RangeEval,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, TypeNode, VarType,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, SolcRange, TypeNode, VarType,
 };
 
 use shared::{GraphError, RangeArena, Search, StorageLocation};
 
-use ethers_core::types::{I256, U256};
+use alloy_primitives::{I256, U256};
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::Loc;
 
@@ -106,6 +108,71 @@ impl ContextVarNode {
         }
     }
 
+    pub fn maybe_add_fields(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        let loc = self.loc(analyzer)?;
+        if let Some(strukt) = self.maybe_struct(analyzer)? {
+            strukt.add_fields_to_cvar(analyzer, *self, loc)
+        } else if let Some(err) = self.maybe_err_node(analyzer)? {
+            err.add_fields_to_cvar(analyzer, *self, loc)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn maybe_add_len_inplace(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
+        loc: Loc,
+    ) -> Result<(), GraphError> {
+        if self.needs_length(analyzer)? {
+            let name = format!("{}.length", self.name(analyzer)?);
+            let len_min = Elem::from(Concrete::from(U256::ZERO));
+            let len_max = Elem::from(Concrete::from(U256::MAX));
+            let range = SolcRange::new(len_min, len_max, vec![]);
+            let len_var = ContextVar {
+                loc: Some(loc),
+                name,
+                display_name: self.display_name(analyzer)? + ".length",
+                storage: *self.storage(analyzer)?,
+                is_tmp: false,
+                tmp_of: None,
+                dep_on: None,
+                is_symbolic: true,
+                is_return: false,
+                is_fundamental: None,
+                ty: VarType::BuiltIn(
+                    BuiltInNode::from(analyzer.builtin_or_add(Builtin::Uint(256))),
+                    Some(range),
+                ),
+            };
+            let len_node = ContextVarNode::from(analyzer.add_node(len_var));
+            analyzer.add_edge(
+                len_node,
+                *self,
+                Edge::Context(ContextEdge::AttrAccess("length")),
+            );
+            analyzer.add_edge(len_node, ctx, Edge::Context(ContextEdge::Variable));
+            let underlying_mut = self.underlying_mut(analyzer).unwrap();
+            if let Some(mut range) = underlying_mut.ty.take_range() {
+                range.min = range.min.set_length(len_node.into());
+                range.min_cached = None;
+                range.max = range.max.set_length(len_node.into());
+                range.max_cached = None;
+                underlying_mut.ty.set_range(range).unwrap();
+            }
+            // invalidate the cache
+            if let Some(idx) = arena.idx(&Elem::from(*self)) {
+                arena.ranges[idx].uncache();
+            }
+
+            ctx.add_var(len_node, analyzer)
+        } else {
+            Ok(())
+        }
+    }
+
     pub fn maybe_enum(&self, analyzer: &impl GraphBackend) -> Result<Option<EnumNode>, GraphError> {
         if let VarType::User(TypeNode::Enum(ut), _) = self.ty(analyzer)? {
             Ok(Some(*ut))
@@ -172,7 +239,17 @@ impl ContextVarNode {
         Ok(global_first.is_storage(analyzer)? || global_first.is_calldata_input(analyzer))
     }
 
+    pub fn cache_is_fundamental(&self, analyzer: &mut impl GraphBackend) -> Result<(), GraphError> {
+        let res = self.is_fundamental(analyzer)?;
+        self.underlying_mut(analyzer)?.is_fundamental = Some(res);
+        Ok(())
+    }
+
     pub fn is_fundamental(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        if let Some(fund) = self.underlying(analyzer)?.is_fundamental {
+            return Ok(fund);
+        }
+
         let global_first = self.global_first_version(analyzer);
         let is_independent = self.is_independent(analyzer)?;
 
@@ -325,7 +402,7 @@ impl ContextVarNode {
                 .underlying(analyzer)?
                 .ret
                 .iter()
-                .any(|(_, node)| node.name(analyzer).unwrap() == self.name(analyzer).unwrap()));
+                .any(|ret| ret.var().name(analyzer).unwrap() == self.name(analyzer).unwrap()));
         }
         Ok(false)
     }
@@ -340,7 +417,7 @@ impl ContextVarNode {
                 .unwrap()
                 .ret
                 .iter()
-                .any(|(_, node)| node.name(analyzer).unwrap() == self.name(analyzer).unwrap())
+                .any(|ret| ret.var().name(analyzer).unwrap() == self.name(analyzer).unwrap())
         })
     }
 
@@ -363,7 +440,7 @@ impl ContextVarNode {
     }
 
     pub fn is_concrete(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(matches!(self.ty(analyzer)?, VarType::Concrete(_)))
+        Ok(self.ty(analyzer)?.is_concrete())
     }
 
     pub fn as_concrete(&self, analyzer: &impl GraphBackend) -> Result<Concrete, GraphError> {
@@ -394,15 +471,32 @@ impl ContextVarNode {
 
     pub fn as_tmp(
         &self,
-        loc: Loc,
-        ctx: ContextNode,
         analyzer: &mut impl AnalyzerBackend,
+        ctx: ContextNode,
+        loc: Loc,
     ) -> Result<Self, GraphError> {
         let new_underlying = self
             .underlying(analyzer)?
             .clone()
-            .as_tmp(loc, ctx, analyzer)?;
-        Ok(analyzer.add_node(Node::ContextVar(new_underlying)).into())
+            .as_tmp(analyzer, ctx, loc)?;
+        let new_tmp = ContextVarNode::from(analyzer.add_node(new_underlying));
+
+        if new_tmp.is_fielded(analyzer)? {
+            let fields = self.fielded_to_fields(analyzer)?;
+            fields.iter().try_for_each(|field| {
+                let field_tmp = field.as_tmp(analyzer, ctx, loc)?;
+                analyzer.add_edge(
+                    field_tmp,
+                    new_tmp,
+                    Edge::Context(ContextEdge::AttrAccess("field")),
+                );
+                Ok(())
+            })?;
+        } else {
+            new_tmp.set_range(analyzer, From::from(Elem::from(*self)))?;
+        }
+
+        Ok(new_tmp)
     }
 
     pub fn ty_eq(
@@ -454,36 +548,6 @@ impl ContextVarNode {
         Ok(())
     }
 
-    // pub fn cast_from_ty(
-    //     &self,
-    //     to_ty: VarType,
-    //     analyzer: &mut (impl GraphBackend + AnalyzerBackend),
-    // ) -> Result<(), GraphError> {
-    //     let new_underlying = self.underlying(analyzer)?.clone();
-    //     let node = analyzer.add_node(Node::ContextVar(new_underlying));
-    //     analyzer.add_edge(node, *self, Edge::Context(ContextEdge::Prev));
-    //     let new_self = ContextVarNode::from(node);
-
-    //     let from_ty = self.ty(analyzer)?.clone();
-    //     if !from_ty.ty_eq(&to_ty, analyzer)? {
-    //         if let Some(new_ty) = from_ty.try_cast(&to_ty, analyzer)? {
-    //             new_self.underlying_mut(analyzer)?.ty = new_ty;
-    //         }
-
-    //         if let Some((new_min, new_max)) = self.cast_exprs(&to_ty, analyzer)? {
-    //             new_self.set_range_min(analyzer, new_min)?;
-    //             new_self.set_range_max(analyzer, new_max)?;
-    //         }
-    //     }
-
-    //     if let (VarType::Concrete(_), VarType::Concrete(cnode)) = (new_self.ty(analyzer)?, to_ty) {
-    //         // update name
-    //         let display_name = cnode.underlying(analyzer)?.as_human_string();
-    //         new_self.underlying_mut(analyzer)?.display_name = display_name;
-    //     }
-    //     Ok(())
-    // }
-
     pub fn cast_from_ty(
         &self,
         to_ty: VarType,
@@ -516,7 +580,7 @@ impl ContextVarNode {
                 min_expr.arenaize(analyzer, arena)?;
                 max_expr.arenaize(analyzer, arena)?;
 
-                let zero = Elem::from(Concrete::from(U256::zero()));
+                let zero = Elem::from(Concrete::from(U256::ZERO));
                 if r.contains_elem(&zero, analyzer, arena) {
                     min_expr = min_expr.min(zero.clone());
                     max_expr = max_expr.max(zero);
@@ -542,7 +606,7 @@ impl ContextVarNode {
                         (Builtin::Int(_), Builtin::Uint(_size)) => {
                             // from ty is int, to ty is uint
                             if let Some(r) = self.ref_range(analyzer)? {
-                                let neg1 = Concrete::from(I256::from(-1i32));
+                                let neg1 = Concrete::from(I256::MINUS_ONE);
                                 if r.contains_elem(&neg1.clone().into(), analyzer, arena) {
                                     max_expr =
                                         max_expr.max(neg1.bit_representation().unwrap().into());
@@ -553,9 +617,18 @@ impl ContextVarNode {
                     }
                 }
                 r.min = min_expr;
+                r.min_cached = None;
                 r.max = max_expr;
+                r.max_cached = None;
                 r.min.arenaize(analyzer, arena)?;
                 r.max.arenaize(analyzer, arena)?;
+                // invalidate the cache
+                if let Some(idx) = arena.idx(&r.min) {
+                    arena.ranges[idx].uncache()
+                }
+                if let Some(idx) = arena.idx(&r.max) {
+                    arena.ranges[idx].uncache()
+                }
                 self.set_range(analyzer, r)?;
             }
         }
@@ -633,7 +706,7 @@ impl ContextVarNode {
                 .max((*self).range_max(analyzer)?.unwrap().cast(to_range.min));
 
             if let Some(r) = self.ref_range(analyzer)? {
-                let zero = Elem::from(Concrete::from(U256::zero()));
+                let zero = Elem::from(Concrete::from(U256::ZERO));
                 if r.contains_elem(&zero, analyzer, arena) {
                     min_expr = min_expr.min(zero.clone());
                     max_expr = max_expr.max(zero);
@@ -660,7 +733,7 @@ impl ContextVarNode {
                     (Builtin::Int(_), Builtin::Uint(_size)) => {
                         // from ty is int, to ty is uint
                         if let Some(r) = self.ref_range(analyzer)? {
-                            let neg1 = Concrete::from(I256::from(-1i32));
+                            let neg1 = Concrete::from(I256::MINUS_ONE);
                             if r.contains_elem(&neg1.clone().into(), analyzer, arena) {
                                 max_expr = max_expr.max(neg1.bit_representation().unwrap().into());
                             }

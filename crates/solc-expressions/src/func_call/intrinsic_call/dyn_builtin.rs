@@ -81,7 +81,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                         .expect_single()
                         .unwrap();
 
-                    let accum_node = self.advance_var_in_ctx(accum_node.into(), loc, ctx)?;
+                    let accum_node = self.advance_var_in_ctx(arena, accum_node.into(), loc, ctx)?;
                     let name = accum_node.display_name(self).into_expr_err(loc)?;
                     let next_var = ContextVarNode::from(var);
                     let next_name = next_var.display_name(self).into_expr_err(loc)?;
@@ -109,7 +109,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
             match curr.flatten() {
                 ExprRet::Single(var) | ExprRet::SingleLiteral(var) => {
                     let acc = ContextVarNode::from(var)
-                        .as_tmp(loc, ctx, self)
+                        .as_tmp(self, ctx, loc)
                         .into_expr_err(loc)?;
                     self.add_edge(acc.0, ctx, Edge::Context(ContextEdge::Variable));
                     ctx.add_var(acc, self).into_expr_err(loc)?;
@@ -190,7 +190,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 //                 let idx = Elem::from(Concrete::from(U256::from(i)));
                 //                 let mut bytes = [0x00; 32];
                 //                 v.encode_utf8(&mut bytes[..]);
-                //                 let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                //                 let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                 //                 (idx, v)
                 //             })
                 //             .collect::<BTreeMap<_, _>>()
@@ -203,7 +203,7 @@ pub trait DynBuiltinCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr
                 //                 let idx = Elem::from(Concrete::from(U256::from(i)));
                 //                 let mut bytes = [0x00; 32];
                 //                 bytes[0] = *v;
-                //                 let v = Elem::from(Concrete::Bytes(1, H256::from(bytes)));
+                //                 let v = Elem::from(Concrete::Bytes(1, B256::from(bytes)));
                 //                 (idx, v)
                 //             })
                 //             .collect::<BTreeMap<_, _>>()

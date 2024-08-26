@@ -8,7 +8,7 @@ use graph::{
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> ArrayCaller for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
@@ -103,12 +103,25 @@ pub trait ArrayCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     .unwrap();
 
                 self.set_var_as_length(arena, ctx, loc, tmp_len, arr.latest_version(self))?;
-                index_access
-                    .set_range_min(self, arena, Elem::Null)
-                    .into_expr_err(loc)?;
-                index_access
-                    .set_range_max(self, arena, Elem::Null)
-                    .into_expr_err(loc)?;
+                if index_access.is_fielded(self).into_expr_err(loc)? {
+                    let fields = index_access.fielded_to_fields(self).into_expr_err(loc)?;
+                    fields.iter().try_for_each(|field| {
+                        field
+                            .set_range_min(self, arena, Elem::Null)
+                            .into_expr_err(loc)?;
+                        field
+                            .set_range_max(self, arena, Elem::Null)
+                            .into_expr_err(loc)?;
+                        Ok(())
+                    })?;
+                } else {
+                    index_access
+                        .set_range_min(self, arena, Elem::Null)
+                        .into_expr_err(loc)?;
+                    index_access
+                        .set_range_max(self, arena, Elem::Null)
+                        .into_expr_err(loc)?;
+                }
 
                 self.update_array_from_index_access(
                     arena,

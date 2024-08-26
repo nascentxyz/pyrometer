@@ -29,7 +29,13 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             }
         }
 
-        let res = self.exec(self.spread(analyzer, arena)?, maximize, analyzer, arena)?;
+        let (lhs_min, lhs_max, rhs_min, rhs_max) = self.spread(analyzer, arena)?;
+        let res = self.exec(
+            (lhs_min, lhs_max, rhs_min, rhs_max),
+            maximize,
+            analyzer,
+            arena,
+        )?;
 
         if let Some(idx) = idx {
             if let Some(Elem::Expr(expr)) = arena.ranges.get_mut(idx) {
@@ -240,7 +246,11 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
         );
 
         let res = match self.op {
+            RangeOp::Slice => Some(exec_slice(
+                &lhs_min, &lhs_max, &rhs_min, &rhs_max, analyzer, arena,
+            )),
             RangeOp::GetLength => exec_get_length(&lhs_min, &lhs_max, maximize, analyzer, arena),
+            RangeOp::GetField => exec_get_field(&lhs_min, &rhs_min, maximize, analyzer, arena),
             RangeOp::GetIndex => exec_get_index(&self.lhs, &self.rhs, maximize, analyzer, arena),
             RangeOp::SetLength => exec_set_length(&lhs_min, &lhs_max, &rhs_min, &rhs_max, maximize),
             RangeOp::SetIndices => exec_set_indices(
@@ -309,7 +319,7 @@ impl ExecOp<Concrete> for RangeExpr<Concrete> {
             ),
         }
         .unwrap_or_else(|| Elem::Expr(self.clone()));
-        tracing::trace!("result: {res}");
+        tracing::trace!("result: {res:?}");
         Ok(res)
     }
 }

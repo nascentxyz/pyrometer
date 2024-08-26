@@ -70,6 +70,24 @@ impl ContextNode {
         }
     }
 
+    /// Get the first ancestor context that is in the same function
+    pub fn ancestor_in_call(
+        &self,
+        analyzer: &mut impl AnalyzerBackend,
+    ) -> Result<Option<ContextNode>, GraphError> {
+        let mut curr_ancestor = self.underlying(analyzer)?.parent_ctx();
+        while let Some(parent) = curr_ancestor {
+            let is_ext = parent.is_ext_fn(analyzer)?;
+            if is_ext {
+                curr_ancestor = parent.underlying(analyzer)?.parent_ctx();
+            } else {
+                return Ok(curr_ancestor);
+            }
+        }
+
+        Ok(None)
+    }
+
     /// Returns all forks associated with the context
     pub fn calls(&self, analyzer: &impl GraphBackend) -> Result<Vec<Self>, GraphError> {
         let descendents = self.descendents(analyzer)?;
@@ -338,6 +356,8 @@ impl ContextNode {
                 loc,
                 analyzer,
                 None,
+                curr.contract_id(analyzer)?,
+                true,
             )?;
             let right_subctx = Context::add_subctx(
                 SubContextKind::Fork {
@@ -347,6 +367,8 @@ impl ContextNode {
                 loc,
                 analyzer,
                 None,
+                curr.contract_id(analyzer)?,
+                true,
             )?;
             curr.set_child_fork(left_subctx, right_subctx, analyzer)?;
 

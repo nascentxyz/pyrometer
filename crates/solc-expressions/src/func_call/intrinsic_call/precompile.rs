@@ -1,12 +1,15 @@
 use crate::func_call::helper::CallerHelper;
-use graph::nodes::SubContextKind;
 
 use graph::{
-    nodes::{Builtin, Context, ContextNode, ContextVar, ContextVarNode, ExprRet},
+    nodes::{
+        Builtin, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractId, ExprRet,
+        SubContextKind,
+    },
     AnalyzerBackend, ContextEdge, Edge, Node,
 };
 use shared::{ExprErr, IntoExprErr};
 
+use alloy_primitives::U256;
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> PrecompileCaller for T where
@@ -55,9 +58,27 @@ pub trait PrecompileCaller:
             }
             "ecrecover" => {
                 let func_idx = *(self.builtin_fn_nodes().get("ecrecover").unwrap());
+
+                let addr = self
+                    .add_concrete_var(
+                        ctx,
+                        Concrete::from(U256::from(1))
+                            .cast(Builtin::Address)
+                            .unwrap(),
+                        loc,
+                    )
+                    .unwrap();
+
                 let subctx_kind = SubContextKind::new_fn_call(ctx, None, func_idx.into(), true);
-                let call_ctx =
-                    Context::add_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
+                let call_ctx = Context::add_subctx(
+                    subctx_kind,
+                    loc,
+                    self,
+                    None,
+                    ContractId::Address(addr),
+                    true,
+                )
+                .into_expr_err(loc)?;
                 ctx.set_child_call(call_ctx, self).into_expr_err(loc)?;
                 let call_node = self.add_node(Node::FunctionCall);
                 self.add_edge(call_node, func_idx, Edge::Context(ContextEdge::Call));
@@ -90,12 +111,19 @@ pub trait PrecompileCaller:
                     .into_expr_err(loc)?;
 
                 let subctx_kind = SubContextKind::new_fn_ret(call_ctx, ctx);
-                let ret_ctx =
-                    Context::add_subctx(subctx_kind, loc, self, None).into_expr_err(loc)?;
+                let ret_ctx = Context::add_subctx(
+                    subctx_kind,
+                    loc,
+                    self,
+                    None,
+                    ctx.contract_id(self).unwrap(),
+                    true,
+                )
+                .into_expr_err(loc)?;
                 call_ctx.set_child_call(ret_ctx, self).into_expr_err(loc)?;
 
                 let tmp_ret = ContextVarNode::from(cvar)
-                    .as_tmp(call_ctx.underlying(self).unwrap().loc, ret_ctx, self)
+                    .as_tmp(self, ret_ctx, call_ctx.underlying(self).unwrap().loc)
                     .unwrap();
                 tmp_ret.underlying_mut(self).unwrap().is_return = true;
                 tmp_ret.underlying_mut(self).unwrap().display_name =

@@ -3,7 +3,7 @@ use crate::range::{elem::*, exec_traits::*};
 
 use shared::RangeArena;
 
-use ethers_core::types::{H256, I256, U256};
+use alloy_primitives::{B256, I256, U256};
 
 impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
     fn range_bit_and(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -31,7 +31,7 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 Some(rc.into())
             }
             (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
-                let op_res = a & b;
+                let op_res = *a & *b;
                 let size = if s > s2 { s } else { s2 };
                 let val = Concrete::Bytes(*size, op_res);
                 let rc = RangeConcrete::new(val, self.loc);
@@ -76,7 +76,7 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 Some(rc.into())
             }
             (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
-                let op_res = a | b;
+                let op_res = *a | *b;
                 let size = if s > s2 { s } else { s2 };
                 let val = Concrete::Bytes(*size, op_res);
                 let rc = RangeConcrete::new(val, self.loc);
@@ -120,8 +120,16 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                 let rc = RangeConcrete::new(val, self.loc);
                 Some(rc.into())
             }
+            (i @ Concrete::Int(..), u @ Concrete::Uint(..)) => {
+                let i_b = i.bit_representation().unwrap().uint_val().unwrap();
+                let u_b = u.uint_val().unwrap();
+                let op_res = i_b ^ u_b;
+                let val = Concrete::Uint(256, op_res).cast(i.as_builtin()).unwrap();
+                let rc = RangeConcrete::new(val, self.loc);
+                Some(rc.into())
+            }
             (Concrete::Bytes(s, a), Concrete::Bytes(s2, b)) => {
-                let op_res = a ^ b;
+                let op_res = *a ^ *b;
                 let size = if s > s2 { s } else { s2 };
                 let val = Concrete::Bytes(*size, op_res);
                 let rc = RangeConcrete::new(val, self.loc);
@@ -156,25 +164,19 @@ impl RangeBitwise<Concrete> for RangeConcrete<Concrete> {
                     .unwrap()
                     .uint_val()
                     .unwrap();
-                let val = U256(
-                    a.0.into_iter()
-                        .map(|i| !i)
-                        .collect::<Vec<_>>()
-                        .try_into()
-                        .unwrap(),
-                );
+                let val = !a;
                 let op_res = val & max;
                 let rc = RangeConcrete::new(Concrete::Uint(*size, op_res), self.loc);
                 Some(rc.into())
             }
             Concrete::Int(size, a) => {
                 let (op_res, _) = a.overflowing_neg();
-                let (op_res, _) = op_res.overflowing_sub(1.into());
+                let (op_res, _) = op_res.overflowing_sub(1.try_into().unwrap());
                 let rc = RangeConcrete::new(Concrete::Int(*size, op_res), self.loc);
                 Some(rc.into())
             }
             Concrete::Bytes(s, a) => {
-                let mut op_res = H256::default();
+                let mut op_res = B256::default();
                 (0..*s).for_each(|i| {
                     op_res.0[i as usize] = !a.0[i as usize];
                 });
@@ -310,8 +312,8 @@ pub fn exec_bit_and(
     bit_and(lhs_max, rhs_min, &mut candidates);
     bit_and(lhs_max, rhs_max, &mut candidates);
 
-    let zero = Elem::from(Concrete::from(U256::from(0)));
-    let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+    let zero = Elem::from(Concrete::from(U256::ZERO));
+    let negative_one = Elem::from(Concrete::from(I256::MINUS_ONE));
 
     let min_contains = matches!(
         rhs_min.range_ord(&zero, arena),
@@ -439,7 +441,7 @@ pub fn exec_bit_or(
     bit_or(lhs_max, rhs_min, &mut candidates);
     bit_or(lhs_max, rhs_max, &mut candidates);
 
-    let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+    let negative_one = Elem::from(Concrete::from(I256::MINUS_ONE));
 
     let min_contains = matches!(
         rhs_min.range_ord(&negative_one, arena),
@@ -548,8 +550,8 @@ pub fn exec_bit_xor(
         lhs_max.range_bit_xor(rhs_max),
     ];
 
-    let zero = Elem::from(Concrete::from(U256::from(0)));
-    let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+    let zero = Elem::from(Concrete::from(U256::ZERO));
+    let negative_one = Elem::from(Concrete::from(I256::MINUS_ONE));
 
     let min_contains = matches!(
         rhs_min.range_ord(&zero, arena),
@@ -631,7 +633,7 @@ pub fn exec_bit_not(
     }
     let mut candidates = vec![lhs_min.range_bit_not(), lhs_max.range_bit_not()];
 
-    let zero = Elem::from(Concrete::from(U256::from(0)));
+    let zero = Elem::from(Concrete::from(U256::ZERO));
 
     let min_contains = matches!(
         lhs_min.range_ord(&zero, arena),
@@ -693,10 +695,16 @@ mod tests {
 
     #[test]
     fn and_int_int() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-5i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-15i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-5i32)),
+            Loc::Implicit,
+        );
         let result = x.range_bit_and(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(-15)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(-15)));
     }
 
     #[test]
@@ -721,10 +729,16 @@ mod tests {
 
     #[test]
     fn or_int_int() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-5i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-15i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-5i32)),
+            Loc::Implicit,
+        );
         let result = x.range_bit_or(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(-5)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(-5)));
     }
 
     #[test]
@@ -749,10 +763,16 @@ mod tests {
 
     #[test]
     fn xor_int_int() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-5i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-15i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-5i32)),
+            Loc::Implicit,
+        );
         let result = x.range_bit_xor(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(10)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(10)));
     }
 
     #[test]
@@ -779,9 +799,12 @@ mod tests {
 
     #[test]
     fn not_int() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-15i32)),
+            Loc::Implicit,
+        );
         let result = x.range_bit_not().unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(14)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(14)));
     }
 
     #[test]

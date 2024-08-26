@@ -11,7 +11,7 @@ contract RequireWithKilled {
         storeRange = x;
     }
 
-    function requireLt(uint x) public {
+    function requireLt(uint x) public view {
         // set bounds for storeRange
         require(5 < storeRange && storeRange < 100);
         "pyro::variable::storeRange::range::[6, 99]"; // broken@brock this range appears as [0,99]
@@ -22,7 +22,7 @@ contract RequireWithKilled {
         require(x < storeRange);
     }
 
-    function requireLte(uint x) public {
+    function requireLte(uint x) public view {
         // set bounds for storeRange
         require(5 < storeRange && storeRange < 100);
         // set tighter bounds for x
@@ -31,7 +31,7 @@ contract RequireWithKilled {
         require(x <= storeRange);
     }
 
-    function requireGt(uint x) public {
+    function requireGt(uint x) public view {
         // set bounds for storeRange
         require(5 < storeRange && storeRange < 100);
         // set tighter bounds for x
@@ -40,7 +40,7 @@ contract RequireWithKilled {
         require(x > storeRange);
     }
 
-    function requireGte(uint x) public {
+    function requireGte(uint x) public view {
         // set bounds for storeRange
         require(5 < storeRange && storeRange < 100);
         // set tighter bounds for x
@@ -49,7 +49,7 @@ contract RequireWithKilled {
         require(x >= storeRange);
     }
 
-    function requireEq(uint x) public {
+    function requireEq(uint x) public view {
         // set bounds for storeRange
         require(5 < storeRange && storeRange < 100);
         // set tighter bounds for x
@@ -58,7 +58,7 @@ contract RequireWithKilled {
         require(x == storeRange);
     }
 
-    function requireNeq(uint x) public {
+    function requireNeq(uint x) public view {
         // set bounds for storeRange
         require(5 < storeRange && storeRange < 100);
         // set tighter bounds for x

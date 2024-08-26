@@ -1,13 +1,18 @@
-use crate::{BuiltinAccess, ContractAccess, EnumAccess, Env, ListAccess, StructAccess};
+use crate::{
+    BuiltinAccess, ContractAccess, EnumAccess, Env, ErrorAccess, ListAccess, StructAccess,
+};
+use graph::ContextEdge;
+use graph::Edge;
 
 use graph::{
     elem::Elem,
     nodes::{
         BuiltInNode, Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ContractNode,
-        EnumNode, ExprRet, FunctionNode, StructNode, TyNode,
+        EnumNode, EnvCtxNode, ExprRet, FunctionNode, StructNode, TyNode,
     },
     AnalyzerBackend, Node, TypeNode, VarType,
 };
+use shared::GraphError;
 use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
@@ -81,6 +86,7 @@ pub trait MemberAccess:
     }
 
     /// Perform the member access
+    #[tracing::instrument(level = "trace", skip_all)]
     fn member_access_inner(
         &mut self,
         ctx: ContextNode,
@@ -119,6 +125,39 @@ pub trait MemberAccess:
             Node::Builtin(ref _b) => {
                 self.builtin_member_access(ctx, BuiltInNode::from(member_idx), name, false, loc)
             }
+            Node::EnvCtx(_) => {
+                if let Some(var) = EnvCtxNode::from(member_idx)
+                    .member_access(self, name)
+                    .into_expr_err(loc)?
+                {
+                    let full_name = var.name(self).unwrap();
+                    if let Some(prev_defined) = ctx
+                        .var_by_name_or_recurse(self, &full_name)
+                        .into_expr_err(loc)?
+                    {
+                        Ok((
+                            ExprRet::Single(prev_defined.latest_version(self).0.into()),
+                            false,
+                        ))
+                    } else {
+                        let cloned = var.latest_version(self).underlying(self).unwrap().clone();
+                        let new_var = self.add_node(cloned);
+                        ctx.add_var(new_var.into(), self).into_expr_err(loc)?;
+                        self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
+                        let e_mut = EnvCtxNode::from(member_idx).underlying_mut(self).unwrap();
+                        e_mut.set(name, new_var);
+                        Ok((ExprRet::Single(new_var), false))
+                    }
+                } else {
+                    let msg_access = self.msg_access(ctx, name, loc)?;
+                    let access = msg_access.expect_single().into_expr_err(loc)?;
+                    ctx.add_var(access.into(), self).into_expr_err(loc)?;
+                    self.add_edge(access, ctx, Edge::Context(ContextEdge::Variable));
+                    let e_mut = EnvCtxNode::from(member_idx).underlying_mut(self).unwrap();
+                    e_mut.set(name, access);
+                    Ok((msg_access, false))
+                }
+            }
             e => Err(ExprErr::Todo(
                 loc,
                 format!("Member access on type: {e:?} is not yet supported"),
@@ -127,12 +166,12 @@ pub trait MemberAccess:
     }
 
     /// Get visible functions for this member
+    #[tracing::instrument(level = "trace", skip_all)]
     fn visible_member_funcs(
         &mut self,
         ctx: ContextNode,
-        loc: Loc,
         member_idx: NodeIdx,
-    ) -> Result<Vec<FunctionNode>, ExprErr> {
+    ) -> Result<Vec<FunctionNode>, GraphError> {
         let res = match self.node(member_idx) {
             Node::ContextVar(cvar) => {
                 tracing::trace!(
@@ -142,7 +181,7 @@ pub trait MemberAccess:
                 match &cvar.ty {
                     VarType::User(TypeNode::Contract(con_node), _) => {
                         let cnode = *con_node;
-                        let mut funcs = cnode.linearized_functions(self, false).into_expr_err(loc)?;
+                        let mut funcs = cnode.linearized_functions(self, false)?;
                         self
                         .possible_library_funcs(ctx, cnode.0.into())
                         .into_iter()
@@ -186,7 +225,7 @@ pub trait MemberAccess:
                     VarType::User(TypeNode::Unresolved(n), _) => {
                         match self.node(*n) {
                             Node::Unresolved(ident) => {
-                                return Err(ExprErr::Unresolved(loc, format!("The type \"{}\" is currently unresolved but should have been resolved by now. This is a bug.", ident.name)))
+                                return Err(GraphError::UnknownVariable(format!("The type \"{}\" is currently unresolved but should have been resolved by now. This is a bug.", ident.name)))
                             }
                             _ => unreachable!()
                         }
@@ -194,8 +233,17 @@ pub trait MemberAccess:
                 }
             }
             Node::Contract(_) => ContractNode::from(member_idx).funcs(self),
-            Node::Concrete(_)
-            | Node::Ty(_)
+            Node::Concrete(_) => {
+                let b = ConcreteNode::from(member_idx)
+                    .underlying(self)
+                    .unwrap()
+                    .as_builtin();
+                let bn = self.builtin_or_add(b);
+                self.possible_library_funcs(ctx, bn)
+                    .into_iter()
+                    .collect::<Vec<_>>()
+            }
+            Node::Ty(_)
             | Node::Struct(_)
             | Node::Function(_)
             | Node::Enum(_)
@@ -204,16 +252,17 @@ pub trait MemberAccess:
                 .into_iter()
                 .collect::<Vec<_>>(),
             e => {
-                return Err(ExprErr::MemberAccessNotFound(
-                    loc,
-                    format!("This type cannot have member functions: {:?}", e),
-                ))
+                return Err(GraphError::NodeConfusion(format!(
+                    "This type cannot have member functions: {:?}",
+                    e
+                )))
             }
         };
         Ok(res)
     }
 
     /// Perform member access for a variable type
+    #[tracing::instrument(level = "trace", skip_all)]
     fn member_access_var(
         &mut self,
         ctx: ContextNode,
@@ -224,6 +273,9 @@ pub trait MemberAccess:
         match cvar.ty(self).into_expr_err(loc)? {
             VarType::User(TypeNode::Struct(struct_node), _) => {
                 self.struct_var_member_access(ctx, cvar, *struct_node, name, loc)
+            }
+            VarType::User(TypeNode::Error(err_node), _) => {
+                self.error_var_member_access(cvar, *err_node, name, loc)
             }
             VarType::User(TypeNode::Enum(enum_node), _) => {
                 self.enum_member_access(ctx, *enum_node, name, loc)
@@ -263,6 +315,7 @@ pub trait MemberAccess:
     }
 
     /// Perform a `TyNode` member access
+    #[tracing::instrument(level = "trace", skip_all)]
     fn ty_member_access(
         &mut self,
         ctx: ContextNode,
@@ -287,6 +340,7 @@ pub trait MemberAccess:
     }
 
     /// Access function members
+    #[tracing::instrument(level = "trace", skip_all)]
     fn func_member_access(
         &mut self,
         ctx: ContextNode,

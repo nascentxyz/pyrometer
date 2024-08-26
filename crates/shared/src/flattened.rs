@@ -1,12 +1,20 @@
+use crate::NodeIdx;
 use crate::{FlatYulExpr, StorageLocation};
 use solang_parser::pt::{Expression, Loc, NamedArgument, Type, YulExpression};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExprFlag {
-    FunctionName(usize, bool, bool),
-    New,
-    Negate,
-    Requirement,
+    FunctionName {
+        num_inputs: usize,
+        call_block_inputs: usize,
+        is_super: bool,
+        named_args: bool,
+        try_catch: bool,
+    },
+    Try,
+    New(bool),
+    Negate(bool),
+    Requirement(bool, bool, bool),
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -32,36 +40,56 @@ pub enum FlatExpr {
         after_each: usize,
         body: usize,
     },
-    Try {
-        loc: Loc,
-        try_expr: usize,
-    },
+    Try(Loc),
 
     Todo(Loc, &'static str),
+    CallSuccess(Loc),
+    TryErrCheck(Loc, &'static str),
+    Pop,
+    Dup,
+    Swap,
 
+    InvalidSolidity(Loc, &'static str),
     Emit(Loc),
     TestCommand(Loc, &'static str),
 
     NamedArgument(Loc, &'static str),
-    FunctionCallName(usize, bool, bool),
-    Requirement(Loc),
+    FunctionCallName {
+        num_inputs: usize,
+        call_block_inputs: usize,
+        is_super: bool,
+        named_args: bool,
+    },
+    Requirement(Loc, bool, bool),
+    CmpRequirement(Loc, bool, bool),
     Super(Loc, &'static str),
 
     Continue(Loc),
     Break(Loc),
     Return(Loc, bool),
-    Revert(Loc, usize), //, Option<&'static str>, usize),
+    Revert(Loc, bool, usize), //, Option<&'static str>, usize),
 
     PostIncrement(Loc),
     PostDecrement(Loc),
     New(Loc),
-    ArrayTy(Loc),
+    ArrayTy(Loc, bool),
     ArrayIndexAccess(Loc),
-    ArraySlice(Loc),
+    ArraySlice(Loc, bool, bool),
+    ArrayLiteral(Loc, usize),
     MemberAccess(Loc, &'static str),
-    FunctionCall(Loc, usize),
-    FunctionCallBlock(Loc),
-    NamedFunctionCall(Loc, usize),
+    FunctionCallBlock(Loc, usize),
+    FunctionCall {
+        loc: Loc,
+        maybe_target: Option<NodeIdx>,
+        num_inputs: usize,
+        num_call_block_inputs: usize,
+    },
+    NamedFunctionCall {
+        loc: Loc,
+        maybe_target: Option<NodeIdx>,
+        num_inputs: usize,
+        num_call_block_inputs: usize,
+    },
     Not(Loc),
     Negate(Loc),
     Delete(Loc),
@@ -100,7 +128,7 @@ pub enum FlatExpr {
     MoreEqual(Loc),
     Equal(Loc),
     NotEqual(Loc),
-    And(Loc),
+    And(Loc, usize, usize, usize),
     Or(Loc),
 
     Assign(Loc),
@@ -125,9 +153,108 @@ pub enum FlatExpr {
     HexLiteral(Loc, &'static str),
     AddressLiteral(Loc, &'static str),
     Variable(Loc, &'static str),
-    ArrayLiteral(Loc),
 
     YulExpr(FlatYulExpr),
+}
+
+impl FlatExpr {
+    pub fn key(&self) -> &'static str {
+        use FlatExpr::*;
+        match self {
+            If { .. } => "If",
+            While { .. } => "While",
+            For { .. } => "For",
+            Try(..) => "Try",
+            TryErrCheck(..) => "TryErrCheck",
+            CallSuccess(..) => "CallSuccess",
+            InvalidSolidity(..) => "InvalidSolidity",
+            VarDef(..) => "VarDef",
+            Todo(..) => "Todo",
+            Emit(..) => "Emit",
+            NamedArgument(..) => "NamedArgument",
+            Continue(..) => "Continue",
+            Break(..) => "Break",
+            Return(..) => "Return",
+            TestCommand(..) => "TestCommand",
+            PostIncrement(..) => "PostIncrement",
+            PostDecrement(..) => "PostDecrement",
+            New(..) => "New",
+            ArrayTy(..) => "ArrayTy",
+            ArrayIndexAccess(..) => "ArrayIndexAccess",
+            ArraySlice(..) => "ArraySlice",
+            MemberAccess(..) => "MemberAccess",
+            FunctionCallBlock(..) => "FunctionCallBlock",
+            FunctionCall { .. } => "FunctionCall",
+            NamedFunctionCall { .. } => "NamedFunctionCall",
+            Not(..) => "Not",
+            Negate(..) => "Negate",
+            Delete(..) => "Delete",
+            PreIncrement(..) => "PreIncrement",
+            PreDecrement(..) => "PreDecrement",
+            UnaryPlus(..) => "UnaryPlus",
+            Power(..) => "Power",
+            Multiply(..) => "Multiply",
+            Divide(..) => "Divide",
+            Modulo(..) => "Modulo",
+            Add(..) => "Add",
+            Subtract(..) => "Subtract",
+            AssignAdd(..) => "AssignAdd",
+            AssignSubtract(..) => "AssignSubtract",
+            AssignMultiply(..) => "AssignMultiply",
+            AssignDivide(..) => "AssignDivide",
+            AssignModulo(..) => "AssignModulo",
+            ShiftLeft(..) => "ShiftLeft",
+            ShiftRight(..) => "ShiftRight",
+            BitwiseAnd(..) => "BitwiseAnd",
+            BitwiseXor(..) => "BitwiseXor",
+            BitwiseOr(..) => "BitwiseOr",
+            BitwiseNot(..) => "BitwiseNot",
+            AssignOr(..) => "AssignOr",
+            AssignAnd(..) => "AssignAnd",
+            AssignXor(..) => "AssignXor",
+            AssignShiftLeft(..) => "AssignShiftLeft",
+            AssignShiftRight(..) => "AssignShiftRight",
+            Less(..) => "Less",
+            More(..) => "More",
+            LessEqual(..) => "LessEqual",
+            MoreEqual(..) => "MoreEqual",
+            Equal(..) => "Equal",
+            NotEqual(..) => "NotEqual",
+            And(..) => "And",
+            Or(..) => "Or",
+            Assign(..) => "Assign",
+            Type(..) => "Type",
+            This(..) => "This",
+            List(..) => "List",
+            Parameter(..) => "Parameter",
+            Null(..) => "Null",
+            BoolLiteral(..) => "BoolLiteral",
+            NumberLiteral(..) => "NumberLiteral",
+            RationalNumberLiteral(..) => "RationalNumberLiteral",
+            HexNumberLiteral(..) => "HexNumberLiteral",
+            StringLiteral(..) => "StringLiteral",
+            HexLiteral(..) => "HexLiteral",
+            AddressLiteral(..) => "AddressLiteral",
+            Variable(..) => "Variable",
+            Requirement(..) => "Requirement",
+            CmpRequirement(..) => "CmpRequirement",
+            Super(..) => "Super",
+            Revert(..) => "Revert",
+            YulExpr(FlatYulExpr::YulVariable(..)) => "YulVariable",
+            YulExpr(FlatYulExpr::YulFuncCall(..)) => "YulFuncCall",
+            YulExpr(FlatYulExpr::YulAssign(..)) => "YulAssign",
+            YulExpr(FlatYulExpr::YulSuffixAccess(..)) => "YulSuffixAccess",
+            YulExpr(FlatYulExpr::YulVarDecl(..)) => "YulVarDecl",
+            YulExpr(FlatYulExpr::YulFuncDef(..)) => "YulFuncDef",
+            ArrayLiteral(..) => "ArrayLiteral",
+            FunctionCallName { .. } => "FunctionCallName",
+            Pop => "Pop",
+            Dup => "Dup",
+            Swap => "Swap",
+            YulExpr(FlatYulExpr::YulStartBlock(_)) => "YulStartBlock",
+            YulExpr(FlatYulExpr::YulEndBlock(_)) => "YulEndBlock",
+        }
+    }
 }
 
 impl std::fmt::Display for FlatExpr {
@@ -167,8 +294,8 @@ impl std::fmt::Display for FlatExpr {
             ArrayTy(..) => write!(f, "[]"),
             ArrayIndexAccess(..) => write!(f, "[(..)]"),
             MemberAccess(_, field) => write!(f, ".{field}"),
-            FunctionCall(_, n) => write!(f, "({})", "_,".repeat(*n)),
-            NamedFunctionCall(_, _) => write!(f, "(..)"),
+            FunctionCall { num_inputs, .. } => write!(f, "({})", "_,".repeat(*num_inputs)),
+            NamedFunctionCall { .. } => write!(f, "(..)"),
             Not(_) => write!(f, "~"),
             Negate(_) => write!(f, "-"),
             Delete(_) => write!(f, "delete "),
@@ -204,7 +331,7 @@ impl std::fmt::Display for FlatExpr {
             MoreEqual(_) => write!(f, " >= "),
             Equal(_) => write!(f, " == "),
             NotEqual(_) => write!(f, " != "),
-            And(_) => write!(f, " && "),
+            And(..) => write!(f, " && "),
             Or(_) => write!(f, " || "),
 
             Assign(_) => write!(f, " = "),
@@ -318,7 +445,10 @@ impl FlatExpr {
             If { loc, .. }
             | While { loc, .. }
             | For { loc, .. }
-            | Try { loc, .. }
+            | Try(loc, ..)
+            | TryErrCheck(loc, ..)
+            | CallSuccess(loc, ..)
+            | InvalidSolidity(loc, ..)
             | VarDef(loc, ..)
             | Todo(loc, ..)
             | Emit(loc, ..)
@@ -334,9 +464,9 @@ impl FlatExpr {
             | ArrayIndexAccess(loc, ..)
             | ArraySlice(loc, ..)
             | MemberAccess(loc, ..)
-            | FunctionCall(loc, ..)
             | FunctionCallBlock(loc, ..)
-            | NamedFunctionCall(loc, ..)
+            | FunctionCall { loc, .. }
+            | NamedFunctionCall { loc, .. }
             | Not(loc, ..)
             | Negate(loc, ..)
             | Delete(loc, ..)
@@ -388,6 +518,7 @@ impl FlatExpr {
             | AddressLiteral(loc, ..)
             | Variable(loc, ..)
             | Requirement(loc, ..)
+            | CmpRequirement(loc, ..)
             | Super(loc, ..)
             | Revert(loc, ..)
             | YulExpr(FlatYulExpr::YulVariable(loc, ..))
@@ -398,7 +529,10 @@ impl FlatExpr {
             | YulExpr(FlatYulExpr::YulFuncDef(loc, ..))
             | ArrayLiteral(loc, ..) => Some(*loc),
 
-            FunctionCallName(..)
+            FunctionCallName { .. }
+            | Pop
+            | Dup
+            | Swap
             | YulExpr(FlatYulExpr::YulStartBlock(_))
             | YulExpr(FlatYulExpr::YulEndBlock(_)) => None,
         }
@@ -454,16 +588,60 @@ impl TryFrom<&Expression> for FlatExpr {
             PostIncrement(loc, ..) => FlatExpr::PostIncrement(*loc),
             PostDecrement(loc, ..) => FlatExpr::PostDecrement(*loc),
             New(loc, ..) => FlatExpr::New(*loc),
-            ArraySubscript(loc, _, None) => FlatExpr::ArrayTy(*loc),
+            ArraySubscript(loc, _, None) => FlatExpr::ArrayTy(*loc, false),
             ArraySubscript(loc, _, Some(_)) => FlatExpr::ArrayIndexAccess(*loc),
-            ArraySlice(loc, ..) => FlatExpr::ArraySlice(*loc),
+            ArraySlice(loc, _, s, e) => FlatExpr::ArraySlice(*loc, s.is_some(), e.is_some()),
             MemberAccess(loc, _, name) => {
                 FlatExpr::MemberAccess(*loc, string_to_static(name.name.clone()))
             }
-            FunctionCall(loc, _, input_exprs) => FlatExpr::FunctionCall(*loc, input_exprs.len()),
-            FunctionCallBlock(loc, _, _) => FlatExpr::FunctionCallBlock(*loc),
-            NamedFunctionCall(loc, _, input_exprs) => {
-                FlatExpr::NamedFunctionCall(*loc, input_exprs.len())
+            FunctionCall(loc, call, input_exprs) => {
+                if let FunctionCallBlock(_, _, args) = &**call {
+                    if let solang_parser::pt::Statement::Args(_, args) = &**args {
+                        FlatExpr::FunctionCall {
+                            loc: *loc,
+                            maybe_target: None,
+                            num_inputs: input_exprs.len(),
+                            num_call_block_inputs: args.len(),
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    FlatExpr::FunctionCall {
+                        loc: *loc,
+                        maybe_target: None,
+                        num_inputs: input_exprs.len(),
+                        num_call_block_inputs: 0,
+                    }
+                }
+            }
+            FunctionCallBlock(loc, _, ref args) => {
+                if let solang_parser::pt::Statement::Args(_, args) = &**args {
+                    FlatExpr::FunctionCallBlock(*loc, args.len())
+                } else {
+                    unreachable!()
+                }
+            }
+            NamedFunctionCall(loc, call, input_exprs) => {
+                if let FunctionCallBlock(_, _, args) = &**call {
+                    if let solang_parser::pt::Statement::Args(_, args) = &**args {
+                        FlatExpr::NamedFunctionCall {
+                            loc: *loc,
+                            maybe_target: None,
+                            num_inputs: input_exprs.len(),
+                            num_call_block_inputs: args.len(),
+                        }
+                    } else {
+                        unreachable!()
+                    }
+                } else {
+                    FlatExpr::NamedFunctionCall {
+                        loc: *loc,
+                        maybe_target: None,
+                        num_inputs: input_exprs.len(),
+                        num_call_block_inputs: 0,
+                    }
+                }
             }
             Not(loc, ..) => FlatExpr::Not(*loc),
             Delete(loc, ..) => FlatExpr::Delete(*loc),
@@ -484,7 +662,7 @@ impl TryFrom<&Expression> for FlatExpr {
             MoreEqual(loc, ..) => FlatExpr::MoreEqual(*loc),
             Equal(loc, ..) => FlatExpr::Equal(*loc),
             NotEqual(loc, ..) => FlatExpr::NotEqual(*loc),
-            And(loc, ..) => FlatExpr::And(*loc),
+            And(loc, ..) => FlatExpr::And(*loc, 0, 0, 0),
             Or(loc, ..) => FlatExpr::Or(*loc),
             Assign(loc, ..) => FlatExpr::Assign(*loc),
             AssignOr(loc, ..) => FlatExpr::AssignOr(*loc),
@@ -568,13 +746,16 @@ impl TryFrom<&Expression> for FlatExpr {
                     )
                 }
             }
-            ArrayLiteral(loc, ..) => FlatExpr::ArrayLiteral(*loc),
+            ArrayLiteral(loc, args) => FlatExpr::ArrayLiteral(*loc, args.len()),
             Variable(var) => {
-                FlatExpr::Variable(var.loc, Box::leak(var.name.clone().into_boxed_str()))
+                if var.name == "this" {
+                    FlatExpr::This(var.loc)
+                } else {
+                    FlatExpr::Variable(var.loc, Box::leak(var.name.clone().into_boxed_str()))
+                }
             }
             List(loc, params) => FlatExpr::List(*loc, params.len()),
-            This(loc, ..) => FlatExpr::This(*loc),
-
+            // This(loc, ..) => FlatExpr::This(*loc),
             Power(_, _, _)
             | Multiply(_, _, _)
             | Divide(_, _, _)

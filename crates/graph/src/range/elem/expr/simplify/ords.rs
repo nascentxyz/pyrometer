@@ -3,7 +3,7 @@ use crate::{
     range::elem::{Elem, RangeElem},
 };
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 use shared::RangeArena;
 
 pub struct Ords {
@@ -23,8 +23,8 @@ impl Ords {
         z: &Elem<Concrete>,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Self {
-        let zero = Elem::from(Concrete::from(U256::zero()));
-        let one = Elem::from(Concrete::from(U256::one()));
+        let zero = Elem::from(Concrete::from(U256::ZERO));
+        let one = Elem::from(Concrete::from(U256::from(1)));
         Self {
             x_ord_z: x.range_ord(z, arena),
             y_ord_z: y.range_ord(z, arena),

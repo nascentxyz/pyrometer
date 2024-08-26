@@ -4,7 +4,7 @@ use crate::GraphBackend;
 
 use shared::RangeArena;
 
-use ethers_core::types::{I256, U256};
+use alloy_primitives::{I256, U256};
 use solang_parser::pt::Loc;
 
 impl RangeSub<Concrete> for RangeConcrete<Concrete> {
@@ -38,7 +38,7 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
             }
             _ => match (&self.val, &other.val) {
                 (Concrete::Uint(lhs_size, val), Concrete::Int(_, neg_v)) => {
-                    let tmp = Concrete::Uint(*lhs_size, U256::zero());
+                    let tmp = Concrete::Uint(*lhs_size, U256::ZERO);
                     let max = Concrete::max_of_type(&tmp).unwrap().uint_val().unwrap();
                     let abs = neg_v.unsigned_abs();
                     let op_res = val.saturating_add(abs).min(max);
@@ -47,7 +47,7 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
                     Some(rc.into())
                 }
                 (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) => {
-                    let tmp = Concrete::Int(*lhs_size, I256::from(0i32));
+                    let tmp = Concrete::Int(*lhs_size, I256::ZERO);
                     let min = Concrete::min_of_type(&tmp).unwrap().int_val().unwrap();
 
                     let op_res = neg_v.saturating_sub(I256::from_raw(*val).max(min));
@@ -56,7 +56,7 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
                     Some(rc.into())
                 }
                 (Concrete::Int(lhs_size, l), Concrete::Int(_rhs_size, r)) => {
-                    let tmp = Concrete::Int(*lhs_size, I256::from(0i32));
+                    let tmp = Concrete::Int(*lhs_size, I256::ZERO);
                     let min = Concrete::min_of_type(&tmp).unwrap().int_val().unwrap();
                     let max = Concrete::max_of_type(&tmp).unwrap().int_val().unwrap();
 
@@ -123,7 +123,7 @@ impl RangeSub<Concrete> for RangeConcrete<Concrete> {
 impl RangeSub<Concrete> for Elem<Concrete> {
     fn range_sub(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
-            (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::ZERO) => Some(self.clone()),
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_sub(b),
             _ => None,
         }
@@ -131,7 +131,7 @@ impl RangeSub<Concrete> for Elem<Concrete> {
 
     fn range_wrapping_sub(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self, other) {
-            (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::zero()) => Some(self.clone()),
+            (_, Elem::Concrete(b)) if b.val.into_u256() == Some(U256::ZERO) => Some(self.clone()),
             (Elem::Concrete(a), Elem::Concrete(b)) => a.range_wrapping_sub(b),
             _ => None,
         }
@@ -199,7 +199,7 @@ pub fn exec_sub(
         let mut all_overflowed = true;
         let mut one_overflowed = false;
         let zero = Elem::Concrete(RangeConcrete::new(
-            Concrete::from(U256::zero()),
+            Concrete::from(U256::ZERO),
             Loc::Implicit,
         ));
         let add_candidate = |lhs: &Elem<Concrete>,
@@ -333,7 +333,7 @@ mod tests {
         let x = RangeConcrete::new(Concrete::Uint(256, U256::from(1)), Loc::Implicit);
         let y = RangeConcrete::new(Concrete::Uint(256, U256::MAX), Loc::Implicit);
         let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Uint(256, U256::zero()));
+        assert_eq!(result.val, Concrete::Uint(256, U256::ZERO));
     }
 
     #[test]
@@ -341,13 +341,13 @@ mod tests {
         let x = RangeConcrete::new(Concrete::Uint(8, U256::from(254)), Loc::Implicit);
         let y = RangeConcrete::new(Concrete::Uint(8, U256::from(255)), Loc::Implicit);
         let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Uint(8, U256::zero()));
+        assert_eq!(result.val, Concrete::Uint(8, U256::ZERO));
     }
 
     #[test]
     fn int_big_uint() {
         let x = RangeConcrete::new(Concrete::Uint(256, U256::from(15)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-1i32)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(256, I256::MINUS_ONE), Loc::Implicit);
         let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Uint(256, U256::from(16)));
     }
@@ -355,17 +355,26 @@ mod tests {
     #[test]
     fn big_int_uint() {
         let x = RangeConcrete::new(Concrete::Uint(256, U256::from(1)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-15i32)),
+            Loc::Implicit,
+        );
         let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Uint(256, U256::from(16)));
     }
 
     #[test]
     fn int_int() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-15i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-15i32)),
+            Loc::Implicit,
+        );
         let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(0i32)));
+        assert_eq!(result.val, Concrete::Int(256, I256::ZERO));
     }
 
     #[test]
@@ -386,26 +395,29 @@ mod tests {
 
     #[test]
     fn saturating_int_int() {
-        let x = RangeConcrete::new(
-            Concrete::Int(256, I256::MIN + I256::from(1i32)),
+        let x = RangeConcrete::new(Concrete::Int(256, I256::MIN + I256::ONE), Loc::Implicit);
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(2i32)),
             Loc::Implicit,
         );
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(2i32)), Loc::Implicit);
         let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Int(256, I256::MIN));
     }
 
     #[test]
     fn sized_saturating_int_int() {
-        let x = RangeConcrete::new(Concrete::Int(8, I256::from(-127i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(8, I256::from(2i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(8, I256::unchecked_from(-127i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(Concrete::Int(8, I256::unchecked_from(2i32)), Loc::Implicit);
         let result = x.range_sub(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(8, I256::from(-128i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::unchecked_from(-128i32)));
     }
 
     #[test]
     fn wrapping_uint_uint() {
-        let x = RangeConcrete::new(Concrete::Uint(256, U256::zero()), Loc::Implicit);
+        let x = RangeConcrete::new(Concrete::Uint(256, U256::ZERO), Loc::Implicit);
         let y = RangeConcrete::new(Concrete::Uint(256, U256::from(1)), Loc::Implicit);
         let result = x
             .range_wrapping_sub(&y)
@@ -417,7 +429,7 @@ mod tests {
 
     #[test]
     fn sized_wrapping_uint_uint() {
-        let x = RangeConcrete::new(Concrete::Uint(8, U256::zero()), Loc::Implicit);
+        let x = RangeConcrete::new(Concrete::Uint(8, U256::ZERO), Loc::Implicit);
         let y = RangeConcrete::new(Concrete::Uint(8, U256::from(1)), Loc::Implicit);
         let result = x
             .range_wrapping_sub(&y)
@@ -429,20 +441,23 @@ mod tests {
 
     #[test]
     fn wrapping_int_int() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-1)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(15i32)), Loc::Implicit);
+        let x = RangeConcrete::new(Concrete::Int(256, I256::unchecked_from(-1)), Loc::Implicit);
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(15i32)),
+            Loc::Implicit,
+        );
         let result = x
             .range_wrapping_sub(&y)
             .unwrap()
             .maybe_concrete_value()
             .unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(-16i32)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(-16i32)));
     }
 
     #[test]
     fn wrapping_int_int_2() {
         let x = RangeConcrete::new(Concrete::Int(256, I256::MIN), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(1i32)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(256, I256::ONE), Loc::Implicit);
         let result = x
             .range_wrapping_sub(&y)
             .unwrap()
@@ -453,14 +468,17 @@ mod tests {
 
     #[test]
     fn sized_wrapping_int_int() {
-        let x = RangeConcrete::new(Concrete::Int(8, I256::from(-128i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(8, I256::from(1i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(8, I256::unchecked_from(-128i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(Concrete::Int(8, I256::ONE), Loc::Implicit);
         let result = x
             .range_wrapping_sub(&y)
             .unwrap()
             .maybe_concrete_value()
             .unwrap();
-        assert_eq!(result.val, Concrete::Int(8, I256::from(127i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::unchecked_from(127i32)));
     }
 
     #[test]
@@ -485,7 +503,7 @@ mod tests {
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
+        assert_eq!(min_result.val, Concrete::Uint(8, U256::ZERO));
     }
 
     #[test]
@@ -510,7 +528,7 @@ mod tests {
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
+        assert_eq!(min_result.val, Concrete::Uint(8, U256::ZERO));
     }
 
     #[test]
@@ -528,14 +546,20 @@ mod tests {
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
+        assert_eq!(
+            max_result.val,
+            Concrete::Int(8, I256::unchecked_from(127i32))
+        );
         let min_result = exec_sub(
             &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
         )
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
+        assert_eq!(
+            min_result.val,
+            Concrete::Int(8, I256::unchecked_from(-128i32))
+        );
     }
 
     #[test]
@@ -553,13 +577,19 @@ mod tests {
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
+        assert_eq!(
+            max_result.val,
+            Concrete::Int(8, I256::unchecked_from(127i32))
+        );
         let min_result = exec_sub(
             &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, true, &g, &mut arena,
         )
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
+        assert_eq!(
+            min_result.val,
+            Concrete::Int(8, I256::unchecked_from(-128i32))
+        );
     }
 }

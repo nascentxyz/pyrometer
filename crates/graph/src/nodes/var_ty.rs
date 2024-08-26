@@ -6,7 +6,7 @@ use crate::{
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, VarType,
 };
 
-use shared::{GraphError, NodeIdx, RangeArena, Search};
+use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
 use solang_parser::pt::{
@@ -50,13 +50,22 @@ impl VarNode {
         &self,
         analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
         arena: &mut RangeArena<Elem<Concrete>>,
-        parent: NodeIdx,
     ) -> Result<(), GraphError> {
         if let Some(expr) = self.underlying(analyzer)?.initializer_expr.clone() {
             tracing::trace!(
                 "Parsing variable initializer for {}",
                 self.underlying(analyzer)?.name.as_ref().unwrap().name
             );
+
+            let loc = self.underlying(analyzer)?.loc;
+            let parent = if let Some(con) = self.maybe_associated_contract(analyzer) {
+                con.0.into()
+            } else if let Some(sup) = self.maybe_associated_source_unit_part(analyzer) {
+                sup.0.into()
+            } else {
+                unreachable!();
+            };
+
             let init = analyzer.parse_expr(arena, &expr, Some(parent));
             let underlying = self.underlying(analyzer)?;
             let target_ty = VarType::try_from_idx(analyzer, underlying.ty).unwrap();
@@ -64,8 +73,26 @@ impl VarNode {
 
             let mut set = false;
             if let Some(initer) = initer_ty.try_cast(&target_ty, analyzer)? {
+                let var = ContextVar {
+                    loc: Some(loc),
+                    name: self.name(analyzer)?,
+                    display_name: self.name(analyzer)?,
+                    storage: if self.is_storage(analyzer)? {
+                        Some(StorageLocation::Storage(loc))
+                    } else {
+                        None
+                    },
+                    is_tmp: false,
+                    dep_on: None,
+                    tmp_of: None,
+                    is_symbolic: true,
+                    is_return: false,
+                    is_fundamental: None,
+                    ty: initer,
+                };
+                let cvar = analyzer.add_node(var);
                 set = true;
-                self.underlying_mut(analyzer)?.initializer = Some(initer.ty_idx());
+                self.underlying_mut(analyzer)?.initializer = Some(cvar);
             }
 
             if !set {
@@ -134,34 +161,74 @@ impl VarNode {
             .name)
     }
 
+    pub fn is_const(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self
+            .underlying(analyzer)?
+            .attrs
+            .iter()
+            .any(|attr| matches!(attr, VariableAttribute::Constant(_))))
+    }
+
+    pub fn is_immutable(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(self
+            .underlying(analyzer)?
+            .attrs
+            .iter()
+            .any(|attr| matches!(attr, VariableAttribute::Immutable(_))))
+    }
+
+    pub fn is_storage(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(!(self.is_const(analyzer)? || self.is_immutable(analyzer)?))
+    }
+
     pub fn const_value(
         &self,
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
         loc: Loc,
-        analyzer: &impl GraphBackend,
     ) -> Result<Option<ContextVar>, GraphError> {
         let attrs = &self.underlying(analyzer)?.attrs;
         if attrs
             .iter()
             .any(|attr| matches!(attr, VariableAttribute::Constant(_)))
         {
-            if let Some(init) = self.underlying(analyzer)?.initializer {
-                if let Some(ty) = VarType::try_from_idx(analyzer, init) {
-                    return Ok(Some(ContextVar {
-                        loc: Some(loc),
-                        name: self.name(analyzer)?,
-                        display_name: self.name(analyzer)?,
-                        storage: None,
-                        is_tmp: false,
-                        dep_on: None,
-                        tmp_of: None,
-                        is_symbolic: true,
-                        is_return: false,
-                        ty,
-                    }));
-                }
+            if let Some(ty) = self.init_value(analyzer, arena, false)? {
+                return Ok(Some(ContextVar {
+                    loc: Some(loc),
+                    name: self.name(analyzer)?,
+                    display_name: self.name(analyzer)?,
+                    storage: None,
+                    is_tmp: false,
+                    dep_on: None,
+                    tmp_of: None,
+                    is_symbolic: true,
+                    is_return: false,
+                    is_fundamental: None,
+                    ty,
+                }));
             }
         }
         Ok(None)
+    }
+
+    pub fn init_value(
+        &self,
+        analyzer: &mut impl AnalyzerBackend<Expr = Expression>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        tried: bool,
+    ) -> Result<Option<VarType>, GraphError> {
+        if let Some(init) = self.underlying(analyzer)?.initializer {
+            if let Some(ty) = VarType::try_from_idx(analyzer, init) {
+                Ok(Some(ty))
+            } else {
+                Ok(None)
+            }
+        } else if self.underlying(analyzer)?.initializer_expr.is_some() && !tried {
+            self.parse_initializer(analyzer, arena)?;
+            self.init_value(analyzer, arena, true)
+        } else {
+            Ok(None)
+        }
     }
 
     pub fn inherited_into(&self, analyzer: &impl GraphBackend) -> Vec<ContextVarNode> {

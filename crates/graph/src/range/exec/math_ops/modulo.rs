@@ -4,13 +4,13 @@ use crate::GraphBackend;
 
 use shared::RangeArena;
 
-use ethers_core::types::{I256, U256};
+use alloy_primitives::{I256, U256};
 
 impl RangeMod<Concrete> for RangeConcrete<Concrete> {
     fn range_mod(&self, other: &Self) -> Option<Elem<Concrete>> {
         match (self.val.into_u256(), other.val.into_u256()) {
             (Some(lhs_val), Some(rhs_val)) => {
-                if rhs_val == 0.into() {
+                if rhs_val == U256::ZERO {
                     return None;
                 }
                 let op_res = lhs_val % rhs_val;
@@ -25,7 +25,7 @@ impl RangeMod<Concrete> for RangeConcrete<Concrete> {
                     let rc = RangeConcrete::new(val, self.loc);
                     Some(rc.into())
                 }
-                (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) if *val != 0.into() => {
+                (Concrete::Int(lhs_size, neg_v), Concrete::Uint(_, val)) if *val != U256::ZERO => {
                     let op_res = *neg_v % I256::from_raw(*val);
                     let val = Concrete::Int(*lhs_size, op_res);
                     let rc = RangeConcrete::new(val, self.loc);
@@ -81,7 +81,7 @@ pub fn exec_mod(
         return lhs_min.range_mod(rhs_min);
     }
 
-    let zero = Elem::from(Concrete::from(U256::zero()));
+    let zero = Elem::from(Concrete::from(U256::ZERO));
 
     let lhs_min_is_pos = matches!(
         lhs_min.range_ord(&zero, arena),
@@ -118,7 +118,7 @@ pub fn exec_mod(
 
     let mut candidates = vec![];
     let one = Elem::from(Concrete::from(U256::from(1)));
-    let negative_one = Elem::from(Concrete::from(I256::from(-1i32)));
+    let negative_one = Elem::from(Concrete::from(I256::MINUS_ONE));
     if !mod_min_is_pos {
         if let Some(r) = rhs_min.range_add(&one) {
             candidates.push(r);
@@ -147,6 +147,8 @@ pub fn exec_mod(
             }
         }
     }
+
+    candidates.push(zero);
 
     // Sort the candidates
     candidates.sort_by(|a, b| match a.range_ord(b, arena) {
@@ -182,7 +184,10 @@ mod tests {
     #[test]
     fn uint_int() {
         let x = RangeConcrete::new(Concrete::Uint(256, U256::from(17)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(5i32)), Loc::Implicit);
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(5i32)),
+            Loc::Implicit,
+        );
         let result = x.range_mod(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Uint(256, U256::from(2)));
     }
@@ -190,47 +195,62 @@ mod tests {
     #[test]
     fn uint_neg_int() {
         let x = RangeConcrete::new(Concrete::Uint(256, U256::from(17)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-5i32)), Loc::Implicit);
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-5i32)),
+            Loc::Implicit,
+        );
         let result = x.range_mod(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(2)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(2)));
     }
 
     #[test]
     fn neg_int_uint() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-17i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-17i32)),
+            Loc::Implicit,
+        );
         let y = RangeConcrete::new(Concrete::Uint(256, U256::from(5)), Loc::Implicit);
         let result = x.range_mod(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(-2i32)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(-2i32)));
     }
 
     #[test]
     fn neg_int_neg_int() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-17i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-5i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-17i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-5i32)),
+            Loc::Implicit,
+        );
         let result = x.range_mod(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(-2i32)));
+        assert_eq!(result.val, Concrete::Int(256, I256::unchecked_from(-2i32)));
     }
 
     #[test]
     fn uint_zero() {
         let x = RangeConcrete::new(Concrete::Uint(256, U256::from(17)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Uint(256, U256::from(0)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Uint(256, U256::ZERO), Loc::Implicit);
         assert!(x.range_mod(&y).is_none());
     }
 
     #[test]
     fn int_zero() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-17i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Uint(256, U256::from(0)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-17i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(Concrete::Uint(256, U256::ZERO), Loc::Implicit);
         assert!(x.range_mod(&y).is_none());
     }
 
     #[test]
     fn int_int() {
         let x = RangeConcrete::new(Concrete::Int(256, I256::MIN), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(-1i32)), Loc::Implicit);
+        let y = RangeConcrete::new(Concrete::Int(256, I256::MINUS_ONE), Loc::Implicit);
         let result = x.range_mod(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(0i32)));
+        assert_eq!(result.val, Concrete::Int(256, I256::ZERO));
     }
 
     #[test]
@@ -253,7 +273,7 @@ mod tests {
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
+        assert_eq!(min_result.val, Concrete::Uint(8, U256::ZERO));
     }
 
     #[test]
@@ -276,7 +296,7 @@ mod tests {
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Uint(8, U256::from(0)));
+        assert_eq!(min_result.val, Concrete::Uint(8, U256::ZERO));
     }
 
     #[test]
@@ -292,14 +312,20 @@ mod tests {
             .unwrap()
             .maybe_concrete()
             .unwrap();
-        assert_eq!(max_result.val, Concrete::Int(8, I256::from(127i32)));
+        assert_eq!(
+            max_result.val,
+            Concrete::Int(8, I256::unchecked_from(127i32))
+        );
         let min_result = exec_mod(
             &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
         )
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Int(8, I256::from(-128i32)));
+        assert_eq!(
+            min_result.val,
+            Concrete::Int(8, I256::unchecked_from(-128i32))
+        );
     }
 
     #[test]
@@ -316,14 +342,48 @@ mod tests {
             .maybe_concrete()
             .unwrap();
         // TODO: improve mod calc to consider lhs being entirely negative
-        // assert_eq!(max_result.val, Concrete::Int(8, I256::from(0i32)));
-        assert_eq!(max_result.val, Concrete::Int(8, I256::from(4i32)));
+        // assert_eq!(max_result.val, Concrete::Int(8, I256::ZERO));
+        assert_eq!(max_result.val, Concrete::Int(8, I256::unchecked_from(4i32)));
         let min_result = exec_mod(
             &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
         )
         .unwrap()
         .maybe_concrete()
         .unwrap();
-        assert_eq!(min_result.val, Concrete::Int(8, I256::from(-4i32)));
+        assert_eq!(
+            min_result.val,
+            Concrete::Int(8, I256::unchecked_from(-4i32))
+        );
+    }
+
+    #[test]
+    fn repro() {
+        let max = U256::from_str_radix(
+            "1340186218024493002587627141304258192746180378074543565271499814906382593",
+            10,
+        )
+        .unwrap();
+
+        let g = DummyGraph::default();
+        let mut arena = Default::default();
+        let lhs_min = rc_uint256(0).into();
+        let lhs_max = RangeConcrete::new(Concrete::Uint(256, max), Loc::Implicit).into();
+        let rhs_min = rc_uint256(7).into();
+        let rhs_max = rc_uint256(7).into();
+
+        let max_result = exec_mod(&lhs_min, &lhs_max, &rhs_min, &rhs_max, true, &g, &mut arena)
+            .unwrap()
+            .maybe_concrete()
+            .unwrap();
+        // TODO: improve mod calc to consider lhs being entirely negative
+        // assert_eq!(max_result.val, Concrete::Int(8, I256::ZERO));
+        assert_eq!(max_result.val, Concrete::Uint(256, U256::from(6)));
+        let min_result = exec_mod(
+            &lhs_min, &lhs_max, &rhs_min, &rhs_max, false, &g, &mut arena,
+        )
+        .unwrap()
+        .maybe_concrete()
+        .unwrap();
+        assert_eq!(min_result.val, Concrete::Uint(256, U256::ZERO));
     }
 }

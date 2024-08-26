@@ -39,7 +39,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     .into_expr_err(loc)?;
                 let to_be_wrapped = ret[1].expect_single().into_expr_err(loc)?;
                 let cvar = ContextVarNode::from(self.add_node(var));
-                let next = self.advance_var_in_ctx(cvar, loc, ctx)?;
+                let next = self.advance_var_in_ctx(arena, cvar, loc, ctx)?;
                 let expr = Elem::Expr(RangeExpr::new(
                     Elem::from(to_be_wrapped),
                     RangeOp::Cast,
@@ -80,7 +80,7 @@ pub trait TypesCaller: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + S
                     .into_expr_err(loc)?;
                 cvar.set_range_max(self, arena, Elem::from(to_be_unwrapped))
                     .into_expr_err(loc)?;
-                let next = self.advance_var_in_ctx(cvar, loc, ctx)?;
+                let next = self.advance_var_in_ctx(arena, cvar, loc, ctx)?;
                 let expr = Elem::Expr(RangeExpr::new(
                     Elem::from(to_be_unwrapped),
                     RangeOp::Cast,

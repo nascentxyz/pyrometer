@@ -2,7 +2,7 @@ use crate::helper::CallerHelper;
 use crate::member_access::ListAccess;
 use crate::variable::Variable;
 use crate::Flatten;
-use solang_parser::helpers::CodeLocation;
+use graph::AsDotStr;
 
 use graph::{
     elem::{Elem, RangeElem, RangeExpr, RangeOp},
@@ -155,9 +155,8 @@ pub trait FuncApplier:
                     }
 
                     self.handled_funcs_mut().push(func);
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(body, None);
-                        self.interpret(func, body.loc(), arena)
+                    if func.underlying(self).unwrap().body.is_some() {
+                        self.interpret_entry_func(func, arena);
                     }
 
                     seen.push(func);
@@ -204,9 +203,8 @@ pub trait FuncApplier:
                     }
 
                     self.handled_funcs_mut().push(func);
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(body, None);
-                        self.interpret(func, body.loc(), arena)
+                    if func.underlying(self).unwrap().body.is_some() {
+                        self.interpret_entry_func(func, arena);
                     }
 
                     seen.push(func);
@@ -252,9 +250,8 @@ pub trait FuncApplier:
                     }
 
                     self.handled_funcs_mut().push(func);
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.traverse_statement(body, None);
-                        self.interpret(func, body.loc(), arena)
+                    if func.underlying(self).unwrap().body.is_some() {
+                        self.interpret_entry_func(func, arena);
                     }
 
                     seen.push(func);
@@ -288,7 +285,6 @@ pub trait FuncApplier:
         //
         //  What is produced is a ContextVarNode that's range is like the return of the normal function
         //  but with x replaced with the input provided
-        tracing::trace!("here");
         let replacement_map = self.basic_inputs_replacement_map(
             arena,
             apply_ctx,
@@ -303,19 +299,37 @@ pub trait FuncApplier:
             .into_expr_err(loc)?
             .iter()
             .enumerate()
-            .map(|(i, (_, ret_node))| {
-                let mut new_var = ret_node.underlying(self).unwrap().clone();
-                let new_name = format!("{}.{i}", func.loc_specified_name(self).unwrap());
+            .map(|(i, ret)| {
+                let mut new_var = ret.var().underlying(self).unwrap().clone();
+                let new_name = format!(
+                    "tmp_{}({}.{i})",
+                    target_ctx.new_tmp(self).unwrap(),
+                    func.loc_specified_name(self).unwrap()
+                );
+                tracing::trace!("handling apply return: {new_name}");
                 new_var.name.clone_from(&new_name);
-                new_var.display_name = new_name;
+                new_var.display_name = new_name.clone();
                 if let Some(mut range) = new_var.ty.take_range() {
                     let mut range: SolcRange =
                         range.take_flattened_range(self, arena).unwrap().into();
+                    tracing::trace!(
+                        "apply return {new_name} target range: [{}, {}]",
+                        range.range_min(),
+                        // .to_range_string(false, self, arena)
+                        // .s,
+                        range.range_max() // .to_range_string(false, self, arena)
+                                          // .s,
+                    );
                     replacement_map.iter().for_each(|(replace, replacement)| {
                         range.replace_dep(*replace, replacement.0.clone(), self, arena);
                     });
 
                     range.cache_eval(self, arena).unwrap();
+
+                    tracing::trace!(
+                        "apply return {new_name} range: {}",
+                        range.as_dot_str(self, arena)
+                    );
                     // TODO: change ty here to match ret type
                     new_var.ty.set_range(range).unwrap();
                 }
@@ -333,7 +347,7 @@ pub trait FuncApplier:
                 target_ctx.add_var(new_cvar, self).unwrap();
 
                 // handle the case where the return node is a struct
-                if let Ok(fields) = ret_node.struct_to_fields(self) {
+                if let Ok(fields) = ret.var().fielded_to_fields(self) {
                     if !fields.is_empty() {
                         fields.iter().for_each(|field| {
                             let mut new_var = field.underlying(self).unwrap().clone();
@@ -373,12 +387,12 @@ pub trait FuncApplier:
                     }
                 } else {
                     let next_cvar = self
-                        .advance_var_in_ctx_forcible(new_cvar, loc, target_ctx, true)
+                        .advance_var_in_ctx_forcible(arena, new_cvar, loc, target_ctx, true)
                         .unwrap();
                     let casted = Elem::Expr(RangeExpr::new(
                         Elem::from(new_cvar),
                         RangeOp::Cast,
-                        Elem::from(*ret_node),
+                        Elem::from(ret.var()),
                     ));
                     next_cvar
                         .set_range_min(self, arena, casted.clone())
@@ -559,9 +573,9 @@ pub trait FuncApplier:
                         ));
                     };
 
-                    let target_fields = correct_input.struct_to_fields(self).into_expr_err(loc)?;
+                    let target_fields = correct_input.fielded_to_fields(self).into_expr_err(loc)?;
                     let replacement_fields =
-                        func_input.struct_to_fields(self).into_expr_err(loc)?;
+                        func_input.fielded_to_fields(self).into_expr_err(loc)?;
                     let match_field =
                         |this: &Self,
                          target_field: ContextVarNode,
@@ -603,9 +617,9 @@ pub trait FuncApplier:
                         );
 
                         let target_sub_fields =
-                            target_field.struct_to_fields(self).into_expr_err(loc)?;
+                            target_field.fielded_to_fields(self).into_expr_err(loc)?;
                         let replacement_sub_fields = replacement_field
-                            .struct_to_fields(self)
+                            .fielded_to_fields(self)
                             .into_expr_err(loc)?;
                         let subs = target_sub_fields
                             .into_iter()
@@ -619,10 +633,10 @@ pub trait FuncApplier:
                         .arenaize(self, arena)
                         .into_expr_err(loc)?;
 
-                    if let Some(next) = correct_input.next_version(self) {
-                        replacement_map
-                            .insert(next.0.into(), (replacement_as_elem.clone(), replacement));
-                    }
+                    // if let Some(next) = correct_input.next_version(self) {
+                    //     replacement_map
+                    //         .insert(next.0.into(), (replacement_as_elem.clone(), replacement));
+                    // }
                     replacement_map
                         .insert(correct_input.0.into(), (replacement_as_elem, replacement));
                 }

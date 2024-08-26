@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{Concrete, ContextVar, ContextVarNode, ContractNode},
+    nodes::{Concrete, ContextVar, ContextVarNode, ContractNode, Fielded},
     range::elem::Elem,
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, VarType,
 };
@@ -42,32 +42,12 @@ impl StructNode {
             .to_string())
     }
 
-    pub fn fields(&self, analyzer: &impl GraphBackend) -> Vec<FieldNode> {
-        let mut fields: Vec<_> = analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter(|edge| Edge::Field == *edge.weight())
-            .map(|edge| FieldNode::from(edge.source()))
-            .collect();
-        fields.sort_by(|a, b| a.0.cmp(&b.0));
-        fields
-    }
-
     pub fn ordered_new_param_names(&self, analyzer: &impl GraphBackend) -> Vec<String> {
         let fields = self.fields(analyzer);
         fields
             .iter()
             .map(|field| field.name(analyzer).unwrap())
             .collect()
-    }
-
-    pub fn find_field(&self, analyzer: &impl GraphBackend, field_name: &str) -> Option<FieldNode> {
-        analyzer
-            .graph()
-            .edges_directed(self.0.into(), Direction::Incoming)
-            .filter(|edge| Edge::Field == *edge.weight())
-            .map(|edge| FieldNode::from(edge.source()))
-            .find(|field_node| field_node.name(analyzer).unwrap() == field_name)
     }
 
     pub fn maybe_associated_contract(&self, analyzer: &impl GraphBackend) -> Option<ContractNode> {
@@ -86,12 +66,36 @@ impl StructNode {
             .next()
             .map(ContractNode::from)
     }
+}
 
-    pub fn add_fields_to_cvar(
+impl Fielded for StructNode {
+    type Field = FieldNode;
+
+    fn find_field(&self, analyzer: &impl GraphBackend, field_name: &str) -> Option<FieldNode> {
+        analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Field == *edge.weight())
+            .map(|edge| FieldNode::from(edge.source()))
+            .find(|field_node| field_node.name(analyzer).unwrap() == field_name)
+    }
+
+    fn fields(&self, analyzer: &impl GraphBackend) -> Vec<FieldNode> {
+        let mut fields: Vec<_> = analyzer
+            .graph()
+            .edges_directed(self.0.into(), Direction::Incoming)
+            .filter(|edge| Edge::Field == *edge.weight())
+            .map(|edge| FieldNode::from(edge.source()))
+            .collect();
+        fields.sort_by(|a, b| a.0.cmp(&b.0));
+        fields
+    }
+
+    fn add_fields_to_cvar(
         &self,
         analyzer: &mut impl GraphBackend,
-        loc: Loc,
         cvar: ContextVarNode,
+        loc: Loc,
     ) -> Result<(), GraphError> {
         self.fields(analyzer).iter().try_for_each(|field| {
             let field_cvar = ContextVar::maybe_new_from_field(
@@ -109,10 +113,7 @@ impl StructNode {
                 Edge::Context(ContextEdge::AttrAccess("field")),
             );
             // do so recursively
-            if let Some(field_struct) = ContextVarNode::from(fc_node).ty(analyzer)?.maybe_struct() {
-                field_struct.add_fields_to_cvar(analyzer, loc, ContextVarNode::from(fc_node))?;
-            }
-            Ok(())
+            ContextVarNode::from(fc_node).maybe_add_fields(analyzer)
         })
     }
 }

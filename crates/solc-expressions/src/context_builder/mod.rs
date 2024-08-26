@@ -94,8 +94,10 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                             target_var.ty(self).unwrap().as_string(self).unwrap(),
                             ctx.path(self),
                         );
+                        let needs_forcible = latest.ty_eq(&target_var, self).into_expr_err(loc);
+                        let needs_forcible = self.add_if_err(needs_forcible).unwrap_or(true);
                         let next = self
-                            .advance_var_in_ctx_forcible(latest, loc, ctx, true)
+                            .advance_var_in_ctx_forcible(arena, latest, loc, ctx, needs_forcible)
                             .unwrap();
                         let res = next.cast_from(&target_var, self, arena).into_expr_err(loc);
                         self.add_if_err(res);
@@ -104,14 +106,13 @@ pub trait ContextBuilder: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> 
                     Err(e) => self.add_expr_err(e),
                 }
 
-                // let ret = self.advance_var_in_ctx(latest, *loc, *ctx);
+                let latest = latest.latest_version_or_inherited_in_ctx(ctx, self);
                 let path = ctx.path(self);
                 let res = latest.underlying_mut(self).into_expr_err(loc);
                 match res {
                     Ok(var) => {
                         tracing::trace!("Returning: {}, {}", path, var.display_name);
                         var.is_return = true;
-
                         self.add_edge(latest, ctx, Edge::Context(ContextEdge::Return));
 
                         let res = ctx.add_return_node(loc, latest, self).into_expr_err(loc);

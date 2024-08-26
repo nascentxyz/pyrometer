@@ -2,33 +2,6 @@
 pragma solidity ^0.8.0;
 
 contract Todo {
-    // will live in env.sol when added
-    function env() public view {
-        bytes32 b = blobhash(1);
-        uint d = block.blobbasefee;
-        b;
-        d;
-    }
-
-    // will live in assign.sol when added
-    function array_literals() public pure {
-        uint[2] memory a = [uint(1), uint(2)];
-        uint[2] memory b = [uint(3), uint(4)];
-        a;
-        b;
-    }
-
-    // will live in assign.sol when added
-    function array_slices(
-        uint[] calldata a
-    ) public pure returns (uint[] memory) {
-        require(a.length >= 4, "Array must have at least 4 elements");
-        uint[] memory b = a[2:4];
-        // if a is [1,2,3,4]
-        // then b is [3, 4]
-        return b;
-    }
-
     // this will live in loops.sol when fixed
     function perform_break_literal() public pure {
         for (uint256 i = 0; i < 10; i++) {
@@ -45,5 +18,50 @@ contract Todo {
                 break;
             }
         }
+    }
+
+    function try_catch_func_require() public pure returns (uint) {
+        try T(address(1)).t(0, 101) returns (uint) {
+            return 2;
+        } catch Error(string memory) {
+            return 1;
+        }
+    }
+
+    function try_catch_func_assert() public pure returns (uint) {
+        try T(address(1)).t(0, 101) returns (uint) {
+            return 2;
+        } catch (bytes memory) {
+            return 1;
+        }
+    }
+
+    function try_catch_contract_require() public returns (uint) {
+        try new T(0, 101) returns (T) {
+            return 2;
+        } catch Error(string memory) {
+            return 1;
+        }
+    }
+
+    function try_catch_contract_assert() public returns (uint) {
+        try new T(100, 0) returns (T) {
+            return 2;
+        } catch (bytes memory) {
+            return 1;
+        }
+    }
+}
+
+contract T {
+    constructor(uint x, uint y) {
+        require(x == 100, "fail");
+        assert(y == 101);
+    }
+
+    function t(uint x, uint y) public pure returns (uint) {
+        require(x == 100, "fail");
+        assert(y == 101);
+        return 1;
     }
 }

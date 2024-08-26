@@ -1,7 +1,7 @@
 use crate::{
     nodes::{context::ContextVarNode, Concrete},
     range::elem::Elem,
-    AsDotStr, GraphBackend, Node, VarType,
+    AsDotStr, GraphBackend, Node, Range, VarType,
 };
 use shared::{GraphError, NodeIdx, RangeArena};
 
@@ -49,16 +49,77 @@ pub enum ExprRet {
     Multi(Vec<ExprRet>),
 }
 
+impl From<ContextVarNode> for ExprRet {
+    fn from(c: ContextVarNode) -> Self {
+        ExprRet::Single(c.0.into())
+    }
+}
+
 impl ExprRet {
     /// Converts the expression return into a debug string
     pub fn debug_str(&self, analyzer: &impl GraphBackend<Node = Node>) -> String {
         match self {
             ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => match analyzer.node(*inner) {
                 Node::ContextVar(_) => format!(
-                    "idx_{}: {}",
+                    "idx_{}: {} ({})",
                     inner.index(),
-                    ContextVarNode::from(*inner).display_name(analyzer).unwrap()
+                    ContextVarNode::from(*inner).display_name(analyzer).unwrap(),
+                    ContextVarNode::from(*inner)
+                        .ty(analyzer)
+                        .unwrap()
+                        .as_string(analyzer)
+                        .unwrap()
                 ),
+                e => format!("idx_{}: {:?}", inner.index(), e),
+            },
+            ExprRet::Multi(inner) => {
+                format!(
+                    "[{}]",
+                    inner
+                        .iter()
+                        .map(|i| i.debug_str(analyzer))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            ExprRet::CtxKilled(kind) => format!("CtxKilled({:?}", kind),
+            ExprRet::Null => "<null>".to_string(),
+        }
+    }
+
+    pub fn debug_str_ranged(
+        &self,
+        analyzer: &impl GraphBackend<Node = Node>,
+        arena: &mut RangeArena<Elem<Concrete>>,
+    ) -> String {
+        match self {
+            ExprRet::Single(inner) | ExprRet::SingleLiteral(inner) => match analyzer.node(*inner) {
+                Node::ContextVar(_) => {
+                    let range_min = if let Some(range) =
+                        ContextVarNode::from(*inner).range(analyzer).unwrap()
+                    {
+                        format!("{}", range.simplified_range_min(analyzer, arena).unwrap())
+                    } else {
+                        "".to_string()
+                    };
+                    let range_max = if let Some(range) =
+                        ContextVarNode::from(*inner).range(analyzer).unwrap()
+                    {
+                        format!("{}", range.simplified_range_max(analyzer, arena).unwrap())
+                    } else {
+                        "".to_string()
+                    };
+                    format!(
+                        "idx_{}: {} ({}) - [{range_min}, {range_max}]",
+                        inner.index(),
+                        ContextVarNode::from(*inner).display_name(analyzer).unwrap(),
+                        ContextVarNode::from(*inner)
+                            .ty(analyzer)
+                            .unwrap()
+                            .as_string(analyzer)
+                            .unwrap()
+                    )
+                }
                 e => format!("idx_{}: {:?}", inner.index(), e),
             },
             ExprRet::Multi(inner) => {
@@ -295,6 +356,18 @@ impl ExprRet {
         }
     }
 
+    pub fn nonnull_len(&self) -> usize {
+        match self {
+            ExprRet::Single(_) | ExprRet::SingleLiteral(_) => 1,
+            ExprRet::Multi(inner) => inner.iter().fold(0, |mut acc, i| {
+                acc += i.nonnull_len();
+                acc
+            }),
+            ExprRet::CtxKilled(..) => 0,
+            ExprRet::Null => 0,
+        }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
@@ -316,5 +389,24 @@ impl ExprRet {
             return Ok(false);
         };
         self_ty.implicitly_castable_to(to_ty, analyzer, is_lit)
+    }
+
+    pub fn implicitly_castable_to_expr(
+        &self,
+        analyzer: &impl GraphBackend,
+        to_ty: &Self,
+    ) -> Result<bool, GraphError> {
+        let idx = self.expect_single()?;
+        let is_lit = self.has_literal();
+        let Some(self_ty) = VarType::try_from_idx(analyzer, idx) else {
+            return Ok(false);
+        };
+
+        let idx = to_ty.expect_single()?;
+        let Some(to_ty) = VarType::try_from_idx(analyzer, idx) else {
+            return Ok(false);
+        };
+
+        self_ty.implicitly_castable_to(&to_ty, analyzer, is_lit)
     }
 }

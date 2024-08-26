@@ -4,8 +4,8 @@ use crate::{member_access::ListAccess, variable::Variable};
 use graph::{
     elem::Elem,
     nodes::{
-        CallFork, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet,
-        FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
+        CallFork, Concrete, Context, ContextNode, ContextVar, ContextVarNode, ContractId, EnvCtx,
+        ExprRet, FunctionNode, FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, Node, Range, VarType,
 };
@@ -18,6 +18,28 @@ use std::collections::BTreeMap;
 impl<T> CallerHelper for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Helper trait for performing function calls
 pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
+    fn add_env(
+        &mut self,
+        callee_ctx: ContextNode,
+        func: FunctionNode,
+        env: Option<EnvCtx>,
+        loc: Loc,
+    ) -> Result<(), ExprErr> {
+        if let Some(mut env) = env {
+            if func.is_public_or_ext(self).into_expr_err(loc)? {
+                if let Some(sig) = func.sig(self).into_expr_err(loc)? {
+                    let sig_var = self.add_concrete_var(callee_ctx, sig, loc)?;
+                    env.sig = Some(sig_var);
+                }
+            }
+
+            let env_ctx = self.add_node(env);
+            self.add_edge(env_ctx, callee_ctx, Edge::Context(ContextEdge::Env));
+        }
+
+        Ok(())
+    }
+
     /// Maps inputs to function parameters such that if there is a renaming i.e. `a(uint256 x)` is called via `a(y)`,
     /// we map `y -> x` for future lookups
     fn map_inputs_to_params(
@@ -76,7 +98,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                                 .unwrap();
                         }
 
-                        let fields = input.struct_to_fields(self).ok()?;
+                        let fields = input.fielded_to_fields(self).ok()?;
                         if !fields.is_empty() {
                             // bring along struct fields
                             fields
@@ -164,9 +186,9 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         loc: Loc,
         func_node: FunctionNode,
         modifier_state: Option<ModifierState>,
+        ext_target: Option<ContractId>,
     ) -> Result<ContextNode, ExprErr> {
-        let fn_ext = curr_ctx.is_fn_ext(func_node, self).into_expr_err(loc)?;
-        if fn_ext {
+        if ext_target.is_some() {
             curr_ctx
                 .add_gas_cost(self, shared::gas::EXT_FUNC_CALL_GAS)
                 .into_expr_err(loc)?;
@@ -176,9 +198,17 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                 .into_expr_err(loc)?;
         }
 
-        let subctx_kind = SubContextKind::new_fn_call(curr_ctx, None, func_node, fn_ext);
-        let callee_ctx =
-            Context::add_subctx(subctx_kind, loc, self, modifier_state).into_expr_err(loc)?;
+        let subctx_kind =
+            SubContextKind::new_fn_call(curr_ctx, None, func_node, ext_target.is_some());
+
+        let id = if let Some(target) = ext_target {
+            target
+        } else {
+            curr_ctx.contract_id(self).into_expr_err(loc)?
+        };
+
+        let callee_ctx = Context::add_subctx(subctx_kind, loc, self, modifier_state, id, true)
+            .into_expr_err(loc)?;
         curr_ctx
             .set_child_call(callee_ctx, self)
             .into_expr_err(loc)?;
@@ -306,6 +336,7 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         loc: Loc,
         caller_ctx: ContextNode,
         callee_ctx: ContextNode,
+        try_catch: bool,
     ) -> Result<(), ExprErr> {
         tracing::trace!(
             "Handling function call return for: {}, {}, depth: {:?}, {:?}",
@@ -323,11 +354,11 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         {
             if let Some(ret_ctx) = callee_ctx.underlying(self).into_expr_err(loc)?.parent_ctx() {
                 let ret = ret_ctx.underlying(self).into_expr_err(loc)?.ret.clone();
-                ret.iter().try_for_each(|(loc, ret)| {
-                    let cvar = self.advance_var_in_forced_ctx(*ret, *loc, callee_ctx)?;
+                ret.iter().try_for_each(|ret| {
+                    let cvar = self.advance_var_in_forced_ctx(ret.var(), ret.loc(), callee_ctx)?;
                     callee_ctx
-                        .add_return_node(*loc, cvar, self)
-                        .into_expr_err(*loc)?;
+                        .add_return_node(ret.loc(), cvar, self)
+                        .into_expr_err(ret.loc())?;
                     self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
 
                     Ok(())
@@ -337,8 +368,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
 
         match callee_ctx.underlying(self).into_expr_err(loc)?.child {
             Some(CallFork::Fork(w1, w2)) => {
-                self.ctx_rets(arena, loc, caller_ctx, w1)?;
-                self.ctx_rets(arena, loc, caller_ctx, w2)?;
+                self.ctx_rets(arena, loc, caller_ctx, w1, try_catch)?;
+                self.ctx_rets(arena, loc, caller_ctx, w2, try_catch)?;
                 Ok(())
             }
             Some(CallFork::Call(c))
@@ -346,15 +377,22 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                     >= caller_ctx.underlying(self).into_expr_err(loc)?.depth =>
             {
                 // follow rabbit hole
-                self.ctx_rets(arena, loc, caller_ctx, c)?;
+                self.ctx_rets(arena, loc, caller_ctx, c, try_catch)?;
                 Ok(())
             }
             _ => {
+                // println!(
+                //     "RET TRY_CATCH: {try_catch}, {:#?}",
+                //     callee_ctx.return_nodes(self).unwrap()
+                // );
                 if callee_ctx.is_anonymous_fn_call(self).into_expr_err(loc)? {
                     return Ok(());
                 }
 
-                if callee_ctx.is_killed(self).into_expr_err(loc)? {
+                if !try_catch
+                    && callee_ctx.is_killed(self).into_expr_err(loc)?
+                    && !callee_ctx.is_graceful_ended(self).unwrap()
+                {
                     return Ok(());
                 }
 
@@ -377,6 +415,8 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         .into_expr_err(loc)?
                         .modifier_state
                         .clone(),
+                    caller_ctx.contract_id(self).into_expr_err(loc)?,
+                    true,
                 )
                 .into_expr_err(loc)?;
                 let res = callee_ctx
@@ -460,12 +500,12 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                     .into_iter()
                     .zip(target_rets.iter())
                     .enumerate()
-                    .map(|(i, ((_, node), target_ret))| {
+                    .map(|(i, (ret, target_ret))| {
                         let target_ty = target_ret.ty(self).unwrap();
                         let target_ty = VarType::try_from_idx(self, target_ty).unwrap();
 
-                        let tmp_ret = node
-                            .as_tmp(callee_ctx.underlying(self).unwrap().loc, ret_subctx, self)
+                        let tmp_ret = ret.var()
+                            .as_tmp(self, ret_subctx, callee_ctx.underlying(self).unwrap().loc)
                             .unwrap();
                         tmp_ret.cast_from_ty(target_ty, self, arena).unwrap();
                         tmp_ret.underlying_mut(self).into_expr_err(loc)?.is_return = true;
@@ -483,6 +523,40 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
                         );
                         ret_subctx.add_var(tmp_ret, self).into_expr_err(loc)?;
                         self.add_edge(tmp_ret, ret_subctx, Edge::Context(ContextEdge::Variable));
+
+                        let fields = ret.var().fielded_to_fields(self).into_expr_err(loc)?;
+                        fields.iter().try_for_each(|field| {
+                            let tmp_field_ret = field
+                                .as_tmp(self, ret_subctx, callee_ctx.underlying(self).unwrap().loc)
+                                .into_expr_err(loc)?;
+                            let field_full_name = field.name(self).into_expr_err(loc)?.clone();
+                            let split = field_full_name.split('.').collect::<Vec<&str>>();
+                            let t = split.iter().map(|i| i.to_string()).collect::<Vec<String>>();
+                            let Some(field_name) = t.last().cloned() else {
+                                return Err(ExprErr::ParseError(
+                                    loc,
+                                    format!("Incorrectly named field: {field_full_name} - no '.' delimiter"),
+                                ));
+                            };
+
+                            tmp_field_ret
+                                .underlying_mut(self)
+                                .into_expr_err(loc)?
+                                .display_name = format!(
+                                "{}.{}.{field_name}",
+                                callee_ctx
+                                    .associated_fn(self)
+                                    .unwrap()
+                                    .loc_specified_name(self)
+                                    .unwrap(),
+                                i
+                            );
+                            self.add_edge(tmp_field_ret, tmp_ret, Edge::Context(ContextEdge::AttrAccess("field")));
+
+                            Ok(())
+                        })?;
+
+
                         Ok(ExprRet::Single(tmp_ret.into()))
                     })
                     .collect::<Result<_, ExprErr>>()?;

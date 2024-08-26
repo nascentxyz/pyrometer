@@ -8,10 +8,13 @@ use crate::{
 };
 use graph::{
     elem::Elem,
-    nodes::{Concrete, ContextNode, ContextVar, ContextVarNode, ContractNode, ExprRet},
+    nodes::{
+        Concrete, ContextNode, ContextVar, ContextVarNode, ContractId, ContractNode, EnvCtx,
+        ExprRet,
+    },
     AnalyzerBackend, Node,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{ExprErr, ExprFlag, IntoExprErr, NodeIdx, RangeArena};
 
 use solang_parser::pt::{Expression, Loc};
 
@@ -62,6 +65,7 @@ pub trait IntrinsicFuncCaller:
         ty_idx: NodeIdx,
         inputs: ExprRet,
         loc: Loc,
+        env: Option<EnvCtx>,
     ) -> Result<(), ExprErr> {
         match self.node(ty_idx) {
             Node::Builtin(_) => {
@@ -70,11 +74,18 @@ pub trait IntrinsicFuncCaller:
             }
             Node::Contract(_)  => {
                 let cnode = ContractNode::from(ty_idx);
+                let try_catch = if matches!(ctx.peek_expr_flag(self), Some(ExprFlag::Try)) {
+                    ctx.take_expr_flag(self);
+                    true
+                } else {
+                    false
+                };
                 if let Some(constructor) = cnode.constructor(self) {
                     let params = constructor.params(self);
                     if params.is_empty() {
                         // call the constructor
                         let inputs = ExprRet::Multi(vec![]);
+                        let id = Some(ContractId::Id(self.increment_contract_id()));
                         self.func_call(
                             arena,
                             ctx,
@@ -83,6 +94,9 @@ pub trait IntrinsicFuncCaller:
                             constructor,
                             None,
                             None,
+                            env,
+                            id,
+                            try_catch,
                         )?;
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                             let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
@@ -103,8 +117,8 @@ pub trait IntrinsicFuncCaller:
                                 .into_expr_err(loc)
                         })
                     } else {
-
                         self.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+                            let id = Some(ContractId::Id(analyzer.increment_contract_id()));
                             // call the constructor
                             analyzer.func_call(
                                 arena,
@@ -114,6 +128,9 @@ pub trait IntrinsicFuncCaller:
                                 constructor,
                                 None,
                                 None,
+                                env.clone(),
+                                id,
+                                try_catch,
                             )?;
                             analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
                                 let var = match ContextVar::maybe_from_user_ty(analyzer, loc, ty_idx) {
@@ -177,7 +194,7 @@ pub trait IntrinsicFuncCaller:
             // array
             "push" | "pop" => self.array_call_inner(arena, ctx, name, inputs, loc),
             // block
-            "blockhash" => self.block_call(ctx, name, inputs, loc),
+            "blockhash" | "blobhash" => self.block_call(ctx, name, inputs, loc),
             // dynamic sized builtins
             "concat" => self.dyn_builtin_call(arena, ctx, name, inputs, loc),
             // msg
@@ -185,7 +202,7 @@ pub trait IntrinsicFuncCaller:
             // precompiles
             "sha256" | "ripemd160" | "ecrecover" => self.precompile_call(ctx, name, inputs, loc),
             // solidity
-            "keccak256" | "addmod" | "mulmod" | "require" | "assert" => {
+            "keccak256" | "addmod" | "mulmod" | "require" | "assert" | "selfdestruct" => {
                 self.solidity_call(arena, ctx, name, inputs, loc)
             }
             // typing

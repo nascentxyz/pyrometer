@@ -7,6 +7,8 @@ use crate::{
     AnalyzerBackend, AsDotStr, ContextEdge, Edge, GraphBackend, Node, SolcRange, VarType,
 };
 
+use alloy_primitives::B256;
+
 use shared::{GraphError, NodeIdx, RangeArena, Search, StorageLocation};
 
 use petgraph::{visit::EdgeRef, Direction};
@@ -41,6 +43,19 @@ impl FunctionNode {
             e => Err(GraphError::NodeConfusion(format!(
                 "Node type confusion: expected node to be Function but it was: {e:?}"
             ))),
+        }
+    }
+
+    pub fn sig(&self, analyzer: &impl GraphBackend) -> Result<Option<Concrete>, GraphError> {
+        if !self.is_public_or_ext(analyzer)? {
+            Ok(None)
+        } else {
+            let name = self.name(analyzer)?;
+            let mut out = [0; 32];
+            keccak_hash::keccak_256(name.as_bytes(), &mut out);
+            let mut sig = [0; 32];
+            (0..4).for_each(|j| sig[j] = out[j]);
+            Ok(Some(Concrete::Bytes(4, B256::new(sig))))
         }
     }
 
@@ -435,11 +450,12 @@ impl FunctionNode {
 
     pub fn add_params_to_ctx(
         &self,
-        ctx: ContextNode,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
     ) -> Result<(), GraphError> {
         self.params(analyzer).iter().try_for_each(|param| {
-            let _ = param.maybe_add_to_ctx(ctx, analyzer)?;
+            let _ = param.maybe_add_to_ctx(analyzer, arena, ctx)?;
             Ok(())
         })
     }
@@ -786,6 +802,7 @@ pub fn var_def_to_ret(expr: Expression) -> (Loc, Option<Parameter>) {
                 ty_loc,
                 Some(Parameter {
                     loc: ty_loc,
+                    annotation: None,
                     ty: expr,
                     storage: None,
                     name: None,
@@ -801,6 +818,7 @@ pub fn var_def_to_ret(expr: Expression) -> (Loc, Option<Parameter>) {
             Loc::Implicit,
             Some(Parameter {
                 loc: Loc::Implicit,
+                annotation: None,
                 ty: e,
                 storage: None,
                 name: None,
@@ -823,6 +841,7 @@ pub fn var_def_to_params(expr: Expression) -> Vec<(Loc, Option<Parameter>)> {
                         ty_loc,
                         Some(Parameter {
                             loc: *loc,
+                            annotation: None,
                             ty: *key_ty.clone(),
                             storage: None,
                             name: None,
@@ -858,6 +877,7 @@ pub fn var_def_to_params(expr: Expression) -> Vec<(Loc, Option<Parameter>)> {
                 loc,
                 Some(Parameter {
                     loc,
+                    annotation: None,
                     ty: Expression::Type(loc, Type::Uint(256)),
                     storage: None,
                     name: None,
@@ -980,9 +1000,11 @@ impl FunctionParamNode {
 
     pub fn maybe_add_to_ctx(
         &self,
-        ctx: ContextNode,
         analyzer: &mut impl AnalyzerBackend,
+        arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
     ) -> Result<bool, GraphError> {
+        let loc = self.loc(analyzer)?;
         if let Some(var) =
             ContextVar::maybe_new_from_func_param(analyzer, self.underlying(analyzer)?.clone())
         {
@@ -990,10 +1012,8 @@ impl FunctionParamNode {
             ctx.add_var(var, analyzer)?;
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::Variable));
             analyzer.add_edge(var, ctx, Edge::Context(ContextEdge::CalldataVariable));
-            if let Some(strukt) = var.maybe_struct(analyzer)? {
-                strukt.add_fields_to_cvar(analyzer, var.loc(analyzer).unwrap(), var)?;
-            }
-
+            var.maybe_add_fields(analyzer)?;
+            var.maybe_add_len_inplace(analyzer, arena, ctx, loc)?;
             Ok(true)
         } else {
             Ok(false)

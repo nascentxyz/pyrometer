@@ -1,4 +1,7 @@
-use crate::nodes::{ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode};
+use crate::nodes::{
+    ContextNode, ContextVarNode, ContractNode, EnumNode, ErrorNode, FunctionNode, StructNode,
+    TyNode,
+};
 use shared::NodeIdx;
 
 use solang_parser::pt::Loc;
@@ -45,6 +48,7 @@ pub struct ModifierState {
     pub parent_ctx: ContextNode,
     /// Renamed inputs based on the modifier
     pub renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
+    pub try_catch: bool,
 }
 
 impl ModifierState {
@@ -56,6 +60,7 @@ impl ModifierState {
         parent_ctx: ContextNode,
         parent_caller_ctx: ContextNode,
         renamed_inputs: BTreeMap<ContextVarNode, ContextVarNode>,
+        try_catch: bool,
     ) -> Self {
         Self {
             num,
@@ -64,6 +69,7 @@ impl ModifierState {
             parent_ctx,
             parent_caller_ctx,
             renamed_inputs,
+            try_catch,
         }
     }
 }
@@ -73,12 +79,23 @@ impl ModifierState {
 pub struct ContextCache {
     /// Variables in this context
     pub vars: BTreeMap<String, ContextVarNode>,
+    /// Storage variables in this context - they may have been shadowed so we need to keep track of them
+    /// separately
+    pub storage_vars: BTreeMap<String, ContextVarNode>,
     /// Temporary variables in this context
     pub tmp_vars: BTreeMap<String, ContextVarNode>,
     /// Visible functions from this context
     pub visible_funcs: Option<Vec<FunctionNode>>,
     /// Visible structs from this context
     pub visible_structs: Option<Vec<StructNode>>,
+    /// Visible enums from this context
+    pub visible_enums: Option<Vec<EnumNode>>,
+    /// Visible errors from this context
+    pub visible_errors: Option<Vec<ErrorNode>>,
+    /// Visible contracts from this context
+    pub visible_contracts: Option<Vec<ContractNode>>,
+    /// Visible contracts from this context
+    pub visible_tys: Option<Vec<TyNode>>,
     /// First ancestor of this context
     pub first_ancestor: Option<ContextNode>,
     /// Associated source of this context

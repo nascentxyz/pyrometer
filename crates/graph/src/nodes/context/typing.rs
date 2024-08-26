@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{context::underlying::SubContextKind, ContextNode, FunctionNode, KilledKind},
+    nodes::{context::underlying::SubContextKind, CallFork, ContextNode, KilledKind},
     AnalyzerBackend, GraphBackend,
 };
 use shared::GraphError;
@@ -66,34 +66,21 @@ impl ContextNode {
         Ok(underlying.child.is_some() || underlying.killed.is_some() || !underlying.ret.is_empty())
     }
 
+    pub fn has_live_edge(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        match underlying.child {
+            Some(CallFork::Call(c)) => c.has_live_edge(analyzer),
+            Some(CallFork::Fork(w1, w2)) => {
+                let w1live = w1.has_live_edge(analyzer)?;
+                let w2live = w2.has_live_edge(analyzer)?;
+                Ok(w1live || w2live)
+            }
+            None => Ok(underlying.ret.is_empty() && underlying.killed.is_none()),
+        }
+    }
+
     /// Check if this context is in an external function call
     pub fn is_ext_fn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(self.underlying(analyzer)?.is_ext_fn_call())
-    }
-
-    /// Checks whether a function is external to the current context
-    pub fn is_fn_ext(
-        &self,
-        fn_node: FunctionNode,
-        analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<bool, GraphError> {
-        match fn_node.maybe_associated_contract(analyzer) {
-            None => Ok(false),
-            Some(fn_ctrt) => {
-                if let Some(self_ctrt) = self
-                    .associated_fn(analyzer)?
-                    .maybe_associated_contract(analyzer)
-                {
-                    Ok(Some(self_ctrt) != Some(fn_ctrt)
-                        && !self_ctrt
-                            .underlying(analyzer)?
-                            .inherits
-                            .iter()
-                            .any(|inherited| *inherited == fn_ctrt))
-                } else {
-                    Ok(false)
-                }
-            }
-        }
     }
 }

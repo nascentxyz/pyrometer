@@ -1,7 +1,6 @@
 use analyzers::{FunctionVarsBoundAnalyzer, ReportConfig, ReportDisplay};
 use graph::{
     nodes::{ContractNode, FunctionNode},
-    solvers::{AtomicSolveStatus, BruteBinSearchSolver, SolcSolver},
     Edge,
 };
 use pyrometer::{Analyzer, Root, SourcePath};
@@ -264,6 +263,7 @@ fn main() {
         debug_panic: args.debug_panic || args.minimize_debug.is_some(),
         minimize_debug: args.minimize_debug,
         debug_stack: args.debug_stack,
+        funcs: args.funcs.clone(),
         ..Default::default()
     };
 
@@ -317,6 +317,7 @@ fn main() {
     let t0 = std::time::Instant::now();
     let maybe_entry = analyzer.parse(arena, &sol, &current_path, true);
     let t_end = t0.elapsed();
+    analyzer.interp_stats.nanos = t_end.as_nanos();
     let parse_time = t_end.as_millis();
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
@@ -342,6 +343,7 @@ fn main() {
     }
 
     if args.stats {
+        println!("{}", analyzer.interp_stats);
         println!("{}", analyzer.stats(t_end, arena));
     }
 
@@ -453,55 +455,15 @@ fn main() {
                         .starts_with(analyze_for)
                 }) {
                     if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {
-                        let mut all_edges = ctx.all_edges(&analyzer).unwrap();
-                        all_edges.push(ctx);
-                        all_edges.iter().for_each(|c| {
-                            let _rets = c.return_nodes(&analyzer).unwrap();
-                            // if c.path(&analyzer).starts_with(r#"step(uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64)"#)
-                            // && rets.iter().take(1).any(|ret| {
-                            //     let range = ret.1.ref_range(&analyzer).unwrap().unwrap();
-                            //     range.evaled_range_min(&analyzer).unwrap().range_eq(&Elem::from(Concrete::from(I256::from(-1))))
-                            // })
-                            {
-                                // step(uint64, uint64, uint64, uint64, uint64, uint64, uint64, uint64).fork{ false }.fork{ true }.fork{ true }.fork{ false }"#.to_string()) {
-                                // println!("{:#?}", c.ctx_deps_as_controllables_str(&analyzer).unwrap());
-                                if let Some(mut solver) = BruteBinSearchSolver::maybe_new(
-                                    c.ctx_deps(&analyzer).unwrap(),
-                                    &mut analyzer,
-                                    arena,
-                                )
-                                .unwrap()
-                                {
-                                    match solver.solve(&mut analyzer, arena).unwrap() {
-                                        AtomicSolveStatus::Unsat => {
-                                            println!("TRUE UNSAT: {}", c.path(&analyzer));
-                                        }
-                                        AtomicSolveStatus::Sat(ranges) => {
-                                            // println!("-----------------------");
-                                            // println!("sat for: {}", c.path(&analyzer));
-                                            ranges.iter().for_each(|(atomic, conc)| {
-                                                println!(
-                                                    "{}: {}",
-                                                    atomic.idxs[0].display_name(&analyzer).unwrap(),
-                                                    conc.as_human_string()
-                                                );
-                                            });
-                                        }
-                                        AtomicSolveStatus::Indeterminate => {
-                                            // println!("-----------------------");
-                                            // println!("sat for: {}", c.path(&analyzer));
-                                            // println!("MAYBE UNSAT");
-                                        }
-                                    }
-                                }
-                                // println!("-----------------------");
-                                let analysis = analyzer
-                                    .bounds_for_lineage(arena, &file_mapping, *c, vec![*c], config)
-                                    .as_cli_compat(&file_mapping);
-                                analysis.print_reports(&mut source_map, &analyzer, arena);
-                                // return;
-                            }
-                        });
+                        if !matches!(
+                            ctx.underlying(&analyzer).unwrap().killed,
+                            Some((_, graph::nodes::KilledKind::DebugIgnored))
+                        ) {
+                            let analysis = analyzer
+                                .bounds_for_all(arena, &file_mapping, ctx, config)
+                                .as_cli_compat(&file_mapping);
+                            analysis.print_reports(&mut source_map, &analyzer, arena);
+                        }
                     }
                 }
             } else if let Some(ctx) = FunctionNode::from(func).maybe_body_ctx(&mut analyzer) {

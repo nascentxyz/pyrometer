@@ -1,11 +1,11 @@
 use graph::{
     elem::*,
     nodes::{Concrete, ConcreteNode, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, Node, TestCommand, VariableCommand,
+    parse_test_command, AnalyzerBackend, ContextEdge, Edge, Node, TestCommand,
 };
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use ethers_core::types::{Address, H256, I256, U256};
+use alloy_primitives::{Address, B256, I256, U256};
 use solang_parser::pt::Loc;
 
 use std::str::FromStr;
@@ -22,14 +22,14 @@ pub trait Literal: AnalyzerBackend + Sized {
         negative: bool,
         unit: Option<&str>,
     ) -> Result<Concrete, ExprErr> {
-        let Ok(int) = U256::from_dec_str(integer) else {
+        let Ok(int) = U256::from_str_radix(integer, 10) else {
             return Err(ExprErr::ParseError(
                 loc,
                 format!("{integer} is too large, it does not fit into a uint256"),
             ));
         };
         let val = if !exponent.is_empty() {
-            let exp = U256::from_dec_str(exponent)
+            let exp = U256::from_str_radix(exponent, 10)
                 .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
             int * U256::from(10).pow(exp)
         } else {
@@ -44,18 +44,18 @@ pub trait Literal: AnalyzerBackend + Sized {
 
         let size: u16 = ((32 - (val.leading_zeros() / 8)) * 8).max(8) as u16;
         if negative {
-            let val = if val == U256::from(2).pow(255.into()) {
+            let val = if val == U256::from(2).pow(255.try_into().unwrap()) {
                 // no need to set upper bit
                 I256::from_raw(val)
             } else {
                 let raw = I256::from_raw(val);
-                if raw < 0.into() {
+                if raw < I256::ZERO {
                     return Err(ExprErr::ParseError(
                         loc,
                         "Negative value cannot fit into int256".to_string(),
                     ));
                 }
-                I256::from(-1i32) * raw
+                I256::MINUS_ONE * raw
             };
             Ok(Concrete::Int(size, val))
         } else {
@@ -86,8 +86,8 @@ pub trait Literal: AnalyzerBackend + Sized {
 
     fn unit_to_uint(&self, unit: &str) -> U256 {
         match unit {
-            "gwei" => U256::from(10).pow(9.into()),
-            "ether" => U256::from(10).pow(18.into()),
+            "gwei" => U256::from(10).pow(9.try_into().unwrap()),
+            "ether" => U256::from(10).pow(18.try_into().unwrap()),
             "minutes" => U256::from(60),
             "hours" => U256::from(3600),
             "days" => U256::from(86400),
@@ -108,17 +108,18 @@ pub trait Literal: AnalyzerBackend + Sized {
         unit: Option<&str>,
         negative: bool,
     ) -> Result<(), ExprErr> {
-        let int =
-            U256::from_dec_str(integer).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
+        let int = U256::from_str_radix(integer, 10)
+            .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
         let exp = if !exponent.is_empty() {
-            U256::from_dec_str(exponent).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?
+            U256::from_str_radix(exponent, 10)
+                .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?
         } else {
-            U256::from(0)
+            U256::ZERO
         };
         let fraction_len = fraction.len();
-        let fraction_denom = U256::from(10).pow(fraction_len.into());
-        let fraction =
-            U256::from_dec_str(fraction).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
+        let fraction_denom = U256::from(10).pow(fraction_len.try_into().unwrap());
+        let fraction = U256::from_str_radix(fraction, 10)
+            .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
 
         let unit_num = if let Some(unit) = unit {
             self.unit_to_uint(unit)
@@ -152,13 +153,13 @@ pub trait Literal: AnalyzerBackend + Sized {
         let concrete_node = if negative {
             let evaled = rational_range.maximize(self, arena).into_expr_err(loc)?;
             let val = evaled.maybe_concrete().unwrap().val.uint_val().unwrap();
-            if val > U256::from(2).pow(255.into()) {
+            if val > U256::from(2).pow(255.try_into().unwrap()) {
                 return Err(ExprErr::ParseError(
                     loc,
                     "Negative value cannot fit into int256".to_string(),
                 ));
             }
-            rational_range = rational_range * Elem::from(Concrete::from(I256::from(-1i32)));
+            rational_range = rational_range * Elem::from(Concrete::from(I256::MINUS_ONE));
             let evaled = rational_range
                 .maximize(self, arena)
                 .into_expr_err(loc)?
@@ -199,19 +200,19 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         negative: bool,
     ) -> Result<(), ExprErr> {
-        let integer: String = integer.chars().filter(|c| *c != '_').collect();
-        let val = U256::from_str_radix(&integer, 16)
+        let integer = integer.strip_prefix("0x").unwrap_or(integer);
+        let val = U256::from_str_radix(integer, 16)
             .map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
         let size: u16 = (((32 - (val.leading_zeros() / 8)) * 8).max(8)) as u16;
         let concrete_node = if negative {
             let raw = I256::from_raw(val);
-            if raw < 0.into() {
+            if raw < I256::ZERO {
                 return Err(ExprErr::ParseError(
                     loc,
                     "Negative value cannot fit into int256".to_string(),
                 ));
             }
-            let val = I256::from(-1i32) * raw;
+            let val = I256::MINUS_ONE * raw;
             ConcreteNode::from(self.add_node(Concrete::Int(size, val)))
         } else {
             ConcreteNode::from(self.add_node(Concrete::Uint(size, val)))
@@ -236,7 +237,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         }
 
         let concrete_node = if h.len() <= 32 {
-            let mut target = H256::default();
+            let mut target = B256::default();
             let mut max = 0;
             h.iter().enumerate().for_each(|(i, hex_byte)| {
                 if *hex_byte != 0x00u8 {
@@ -277,71 +278,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 
     fn test_string_literal(&mut self, s: &str) -> Option<TestCommand> {
-        let split = s.split("::").collect::<Vec<_>>();
-        if split.first().copied() == Some("pyro") {
-            match split.get(1).copied() {
-                Some("variable") => {
-                    let name = split.get(2).copied()?;
-                    match split.get(3).copied() {
-                        Some("range") => {
-                            let range = split
-                                .get(4)
-                                .copied()?
-                                .chars()
-                                .filter(|c| !c.is_whitespace())
-                                .collect::<String>();
-                            let range = range
-                                .trim_start_matches('[')
-                                .trim_end_matches(']')
-                                .split(',')
-                                .collect::<Vec<_>>();
-                            let mut min_str = *range.first()?;
-                            let mut min_neg = false;
-                            if let Some(new_min) = min_str.strip_prefix('-') {
-                                min_neg = true;
-                                min_str = new_min;
-                            }
-
-                            let mut max_str = *range.get(1)?;
-                            let mut max_neg = false;
-                            if let Some(new_max) = max_str.strip_prefix('-') {
-                                max_neg = true;
-                                max_str = new_max;
-                            }
-
-                            let min = self
-                                .concrete_number_from_str(Loc::Implicit, min_str, "", min_neg, None)
-                                .ok()?;
-                            let max = self
-                                .concrete_number_from_str(Loc::Implicit, max_str, "", max_neg, None)
-                                .ok()?;
-
-                            Some(TestCommand::Variable(
-                                name.to_string(),
-                                VariableCommand::RangeAssert { min, max },
-                            ))
-                        }
-                        _ => None,
-                    }
-                }
-                Some("constraint") => {
-                    let constraint = split.get(2).copied()?;
-                    Some(TestCommand::Constraint(constraint.to_string()))
-                }
-                Some("coverage") => match split.get(2).copied() {
-                    Some("onlyPath") => {
-                        Some(TestCommand::Coverage(graph::CoverageCommand::OnlyPath))
-                    }
-                    Some("unreachable") => {
-                        Some(TestCommand::Coverage(graph::CoverageCommand::Unreachable))
-                    }
-                    _ => None,
-                },
-                _ => None,
-            }
-        } else {
-            None
-        }
+        parse_test_command(s)
     }
 
     fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &str) -> Result<(), ExprErr> {
@@ -377,6 +314,7 @@ mod tests {
     use super::*;
     use eyre::Result;
     use graph::nodes::Context;
+    use graph::nodes::ContractId;
     use graph::nodes::Function;
     use pyrometer::Analyzer;
     use solang_parser::pt::HexLiteral;
@@ -387,7 +325,7 @@ mod tests {
         let func_node = analyzer.graph.add_node(Node::Function(func)).into();
 
         let loc = Loc::File(0, 0, 0);
-        let ctx = Context::new(func_node, "test_fn".to_string(), loc);
+        let ctx = Context::new(func_node, "test_fn".to_string(), loc, ContractId::Dummy);
 
         ContextNode::from(analyzer.graph.add_node(Node::Context(ctx)))
     }
@@ -449,7 +387,7 @@ mod tests {
     #[test]
     fn test_number_literal_positive() -> Result<()> {
         let num_literal = "123";
-        let expected = Concrete::Uint(8, U256::from_dec_str(num_literal).unwrap());
+        let expected = Concrete::Uint(8, U256::from_str_radix(num_literal, 10).unwrap());
         test_number_literal(num_literal, "", false, None, expected)
     }
 
@@ -468,7 +406,7 @@ mod tests {
         // 123e18
         let num_literal = "123";
         let exponent = "10";
-        let expected = Concrete::Uint(48, U256::from_dec_str("1230000000000").unwrap());
+        let expected = Concrete::Uint(48, U256::from_str_radix("1230000000000", 10).unwrap());
         test_number_literal(num_literal, exponent, false, None, expected)
     }
 
@@ -476,7 +414,7 @@ mod tests {
     fn test_number_literal_positive_with_zero_exponent() -> Result<()> {
         let num_literal = "123";
         let exponent = "0";
-        let expected = Concrete::Uint(8, U256::from_dec_str("123").unwrap());
+        let expected = Concrete::Uint(8, U256::from_str_radix("123", 10).unwrap());
         test_number_literal(num_literal, exponent, false, None, expected)
     }
 
@@ -485,7 +423,10 @@ mod tests {
         let num_literal = "123";
         let exponent = "0";
         let unit = Some("ether");
-        let expected = Concrete::Uint(72, U256::from_dec_str("123000000000000000000").unwrap());
+        let expected = Concrete::Uint(
+            72,
+            U256::from_str_radix("123000000000000000000", 10).unwrap(),
+        );
         test_number_literal(num_literal, exponent, false, unit, expected)
     }
 
@@ -494,7 +435,10 @@ mod tests {
         let num_literal = "123";
         let exponent = "";
         let unit = Some("ether");
-        let expected = Concrete::Uint(72, U256::from_dec_str("123000000000000000000").unwrap());
+        let expected = Concrete::Uint(
+            72,
+            U256::from_str_radix("123000000000000000000", 10).unwrap(),
+        );
         test_number_literal(num_literal, exponent, false, unit, expected)
     }
 
@@ -508,7 +452,7 @@ mod tests {
     #[test]
     fn test_number_literal_negative_zero() -> Result<()> {
         let num_literal = "0";
-        let expected = Concrete::Int(8, I256::from_dec_str("0").unwrap());
+        let expected = Concrete::Int(8, I256::ZERO);
         test_number_literal(num_literal, "", true, None, expected)
     }
 
@@ -598,7 +542,7 @@ mod tests {
         let integer = "1";
         let fraction = "00001";
         let exponent = "18";
-        let expected = Concrete::Uint(64, U256::from_dec_str("1000010000000000000").unwrap());
+        let expected = Concrete::Uint(64, U256::from_str_radix("1000010000000000000", 10).unwrap());
         test_rational_number_literal(integer, fraction, exponent, false, None, expected)
     }
 
@@ -607,7 +551,7 @@ mod tests {
         let integer = "23";
         let fraction = "5";
         let exponent = "5";
-        let expected = Concrete::Uint(24, U256::from_dec_str("2350000").unwrap());
+        let expected = Concrete::Uint(24, U256::from_str_radix("2350000", 10).unwrap());
         test_rational_number_literal(integer, fraction, exponent, false, None, expected)
     }
 
@@ -626,7 +570,7 @@ mod tests {
         let fraction = "5";
         let exponent = "0";
         let unit = Some("ether");
-        let expected = Concrete::Uint(64, U256::from_dec_str("1500000000000000000").unwrap());
+        let expected = Concrete::Uint(64, U256::from_str_radix("1500000000000000000", 10).unwrap());
         test_rational_number_literal(integer, fraction, exponent, false, unit, expected)
     }
 
@@ -681,7 +625,7 @@ mod tests {
     #[test]
     fn test_hex_num_literal_positive() -> Result<()> {
         let hex_literal = "7B"; // 123 in decimal
-        let expected = Concrete::Uint(8, U256::from_dec_str("123").unwrap());
+        let expected = Concrete::Uint(8, U256::from_str_radix("123", 10).unwrap());
         test_hex_num_literal(hex_literal, false, expected)
     }
 
@@ -697,8 +641,9 @@ mod tests {
         let hex_literal = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF"; // max U256
         let expected = Concrete::Uint(
             256,
-            U256::from_dec_str(
+            U256::from_str_radix(
                 "115792089237316195423570985008687907853269984665640564039457584007913129639935",
+                10,
             )
             .unwrap(),
         );
@@ -729,14 +674,14 @@ mod tests {
     #[test]
     fn test_hex_num_literal_zero() -> Result<()> {
         let hex_literal = "0"; // zero
-        let expected = Concrete::Uint(8, U256::from_dec_str("0").unwrap());
+        let expected = Concrete::Uint(8, U256::ZERO);
         test_hex_num_literal(hex_literal, false, expected)
     }
 
     #[test]
     fn test_hex_num_literal_min_positive() -> Result<()> {
         let hex_literal = "1"; // smallest positive value
-        let expected = Concrete::Uint(8, U256::from_dec_str("1").unwrap());
+        let expected = Concrete::Uint(8, U256::from_str_radix("1", 10).unwrap());
         test_hex_num_literal(hex_literal, false, expected)
     }
 
@@ -752,8 +697,9 @@ mod tests {
         let hex_literal = "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFE"; // just below max U256
         let expected = Concrete::Uint(
             256,
-            U256::from_dec_str(
+            U256::from_str_radix(
                 "115792089237316195423570985008687907853269984665640564039457584007913129639934",
+                10,
             )
             .unwrap(),
         );
@@ -840,7 +786,7 @@ mod tests {
         };
         let mut bytes = [0u8; 32];
         bytes[0] = 0x7B; // Set the first byte to 0x7B as solidity does
-        let expected = Concrete::Bytes(1, H256::from_slice(&bytes));
+        let expected = Concrete::Bytes(1, B256::from_slice(&bytes));
         test_hex_literals(&[hex_literal], expected)
     }
 
@@ -860,7 +806,7 @@ mod tests {
         let mut bytes = [0u8; 32];
         bytes[0] = 0x7B;
         bytes[1] = 0xFF;
-        let expected = Concrete::Bytes(2, H256::from_slice(&bytes));
+        let expected = Concrete::Bytes(2, B256::from_slice(&bytes));
         test_hex_literals(&hex_literals[..], expected)
     }
 
@@ -870,17 +816,17 @@ mod tests {
             hex: "".to_string(),
             loc: Loc::File(0, 0, 0),
         };
-        let expected = Concrete::Bytes(0, H256::default());
+        let expected = Concrete::Bytes(0, B256::default());
         test_hex_literals(&[hex_literal], expected)
     }
 
     #[test]
     fn test_hex_literals_large() -> Result<()> {
         let hex_literal = HexLiteral {
-            hex: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF".to_string(), // max H256
+            hex: "FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF".to_string(), // max B256
             loc: Loc::File(0, 0, 0),
         };
-        let expected = Concrete::Bytes(32, H256::from_slice(&[0xFF; 32]));
+        let expected = Concrete::Bytes(32, B256::from_slice(&[0xFF; 32]));
         test_hex_literals(&[hex_literal], expected)
     }
 

@@ -6,7 +6,7 @@ use crate::{
 };
 use shared::{GraphError, NodeIdx, RangeArena};
 
-use ethers_core::types::I256;
+use alloy_primitives::I256;
 
 use std::collections::BTreeMap;
 
@@ -243,6 +243,12 @@ impl<T: Ord> Elem<T> {
         Elem::Expr(expr)
     }
 
+    /// Creates a new range element that is a slice of the lhs with the rhs
+    pub fn slice(self, other: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::Slice, other);
+        Elem::Expr(expr)
+    }
+
     /// Gets the length of a memory object
     pub fn get_length(self) -> Self {
         let expr = RangeExpr::new(self, RangeOp::GetLength, Elem::Null);
@@ -252,6 +258,11 @@ impl<T: Ord> Elem<T> {
     /// Gets the length of a memory object
     pub fn get_index(self, other: Self) -> Self {
         let expr = RangeExpr::new(self, RangeOp::GetIndex, other);
+        Elem::Expr(expr)
+    }
+
+    pub fn get_field(self, name: Self) -> Self {
+        let expr = RangeExpr::new(self, RangeOp::GetField, name);
         Elem::Expr(expr)
     }
 }
@@ -464,7 +475,7 @@ impl Elem<Concrete> {
         rhs_min: &Self,
         rhs_max: &Self,
         eval: bool,
-        analyzer: &mut impl GraphBackend,
+        analyzer: &impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<Option<bool>, GraphError> {
         match self {
@@ -512,6 +523,19 @@ impl Elem<Concrete> {
                     _ => Ok(Some(false)),
                 }
             }
+            Self::Expr(_) => {
+                let min = self.minimize(analyzer, arena)?;
+                let max = self.maximize(analyzer, arena)?;
+                if let Some(true) = min.overlaps_dual(rhs_min, rhs_max, eval, analyzer, arena)? {
+                    Ok(Some(true))
+                } else if let Some(true) =
+                    max.overlaps_dual(rhs_min, rhs_max, eval, analyzer, arena)?
+                {
+                    Ok(Some(true))
+                } else {
+                    Ok(None)
+                }
+            }
             _ => Ok(None),
         }
     }
@@ -525,7 +549,7 @@ impl Elem<Concrete> {
             Elem::Concrete(RangeConcrete {
                 val: Concrete::Int(_, val),
                 ..
-            }) if val < &I256::zero() => true,
+            }) if val < &I256::ZERO => true,
             Elem::Reference(dy) => {
                 if maximize {
                     dy.maximize(analyzer, arena)?
@@ -550,7 +574,7 @@ impl Elem<Concrete> {
     }
 
     pub fn pre_evaled_is_negative(&self) -> bool {
-        matches!(self, Elem::Concrete(RangeConcrete { val: Concrete::Int(_, val), ..}) if val < &I256::zero())
+        matches!(self, Elem::Concrete(RangeConcrete { val: Concrete::Int(_, val), ..}) if val < &I256::ZERO)
     }
 
     pub fn inverse_if_boolean(&self) -> Option<Self> {

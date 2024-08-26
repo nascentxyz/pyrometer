@@ -4,7 +4,7 @@ use crate::GraphBackend;
 
 use shared::RangeArena;
 
-use ethers_core::types::U256;
+use alloy_primitives::U256;
 
 impl RangeExp<Concrete> for RangeConcrete<Concrete> {
     fn range_exp(&self, other: &Self) -> Option<Elem<Concrete>> {
@@ -26,7 +26,7 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
             _ => match (&self.val, &other.val.into_u256()) {
                 // exponent must be positive otherwise return None.
                 (Concrete::Int(lhs_size, neg_v), Some(val)) => {
-                    let pow2 = val % U256::from(2) == 0.into();
+                    let pow2 = val % U256::from(2) == U256::ZERO;
                     let val = if val > &U256::from(u32::MAX) {
                         if pow2 {
                             Concrete::max_of_type(&self.val).unwrap()
@@ -37,7 +37,7 @@ impl RangeExp<Concrete> for RangeConcrete<Concrete> {
                         let min = Concrete::min_of_type(&self.val).unwrap().int_val().unwrap();
                         let max = Concrete::max_of_type(&self.val).unwrap().int_val().unwrap();
 
-                        let op_res = neg_v.checked_pow(val.as_u32());
+                        let op_res = neg_v.checked_pow(*val);
                         if let Some(num) = op_res {
                             if pow2 {
                                 Concrete::Int(*lhs_size, num.min(max))
@@ -112,7 +112,7 @@ pub fn exec_exp(
 mod tests {
     use super::*;
     use crate::DummyGraph;
-    use ethers_core::types::I256;
+    use alloy_primitives::I256;
     use solang_parser::pt::Loc;
 
     #[test]
@@ -141,40 +141,49 @@ mod tests {
 
     #[test]
     fn int_uint() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-1i32)), Loc::Implicit);
+        let x = RangeConcrete::new(Concrete::Int(256, I256::MINUS_ONE), Loc::Implicit);
         let y = RangeConcrete::new(Concrete::Uint(256, U256::from(15)), Loc::Implicit);
         let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(256, I256::from(-1i32)));
+        assert_eq!(result.val, Concrete::Int(256, I256::MINUS_ONE));
     }
 
     #[test]
     fn int_uint_2() {
-        let x = RangeConcrete::new(Concrete::Int(256, I256::from(-15i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(15i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(-15i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(15i32)),
+            Loc::Implicit,
+        );
         let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(
             result.val,
-            Concrete::Int(256, I256::from(-437893890380859375i128))
+            Concrete::Int(256, I256::unchecked_from(-437893890380859375i128))
         );
     }
 
     #[test]
     fn saturating_int_int() {
-        let x = RangeConcrete::new(
-            Concrete::Int(256, I256::MIN + I256::from(1i32)),
+        let x = RangeConcrete::new(Concrete::Int(256, I256::MIN + I256::ONE), Loc::Implicit);
+        let y = RangeConcrete::new(
+            Concrete::Int(256, I256::unchecked_from(2i32)),
             Loc::Implicit,
         );
-        let y = RangeConcrete::new(Concrete::Int(256, I256::from(2i32)), Loc::Implicit);
         let result = x.range_exp(&y).unwrap().maybe_concrete_value().unwrap();
         assert_eq!(result.val, Concrete::Int(256, I256::MAX));
     }
 
     #[test]
     fn sized_saturating_int_int() {
-        let x = RangeConcrete::new(Concrete::Int(8, I256::from(-127i32)), Loc::Implicit);
-        let y = RangeConcrete::new(Concrete::Int(8, I256::from(-2i32)), Loc::Implicit);
+        let x = RangeConcrete::new(
+            Concrete::Int(8, I256::unchecked_from(-127i32)),
+            Loc::Implicit,
+        );
+        let y = RangeConcrete::new(Concrete::Int(8, I256::unchecked_from(-2i32)), Loc::Implicit);
         let result = x.range_add(&y).unwrap().maybe_concrete_value().unwrap();
-        assert_eq!(result.val, Concrete::Int(8, I256::from(-128i32)));
+        assert_eq!(result.val, Concrete::Int(8, I256::unchecked_from(-128i32)));
     }
 
     #[test]
