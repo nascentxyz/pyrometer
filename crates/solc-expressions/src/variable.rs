@@ -314,53 +314,6 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         Some(cvar.latest_version_or_inherited_in_ctx(ctx, self))
     }
 
-    fn get_unchanged_tmp_variable(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        name: &str,
-        ctx: ContextNode,
-    ) -> Result<Option<ContextVarNode>, GraphError> {
-        let Some(var) = self.get_tmp_variable(name, ctx) else {
-            return Ok(None);
-        };
-
-        if let Some(tmp) = var.tmp_of(self)? {
-            if tmp.lhs.latest_version_or_inherited_in_ctx(ctx, self) != tmp.lhs {
-                let latest = tmp.lhs.latest_version_or_inherited_in_ctx(ctx, self);
-                let newest_min = latest.evaled_range_min(self, arena)?;
-                let curr_min = tmp.lhs.evaled_range_min(self, arena)?;
-                if newest_min != curr_min {
-                    return Ok(None);
-                }
-                let newest_max = latest.evaled_range_max(self, arena)?;
-                let curr_max = tmp.lhs.evaled_range_max(self, arena)?;
-                if newest_max != curr_max {
-                    return Ok(None);
-                }
-            }
-
-            if let Some(rhs) = tmp.rhs {
-                if rhs.latest_version_or_inherited_in_ctx(ctx, self) != rhs {
-                    let latest = rhs.latest_version_or_inherited_in_ctx(ctx, self);
-                    let newest_min = latest.evaled_range_min(self, arena)?;
-                    let curr_min = rhs.evaled_range_min(self, arena)?;
-                    if newest_min != curr_min {
-                        return Ok(None);
-                    }
-                    let newest_max = latest.evaled_range_max(self, arena)?;
-                    let curr_max = rhs.evaled_range_max(self, arena)?;
-                    if newest_max != curr_max {
-                        return Ok(None);
-                    }
-                }
-            }
-
-            Ok(Some(var))
-        } else {
-            Ok(Some(var))
-        }
-    }
-
     /// Match on the [`ExprRet`]s of a variable definition and construct the variable
     fn match_var_def(
         &mut self,

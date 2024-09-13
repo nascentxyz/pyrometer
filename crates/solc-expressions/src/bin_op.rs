@@ -159,6 +159,18 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
         op: RangeOp,
         assign: bool,
     ) -> Result<ExprRet, ExprErr> {
+        // Given a lhs and rhs node
+        //  - if assignment:
+        //       - increment the version of the lhs
+        //       - assign the new lhs to lhs + rhs
+        //       - denote that the new lhs is dependent on the rhs
+        //  - if not assignment:
+        //      - create a temporary variable and add it to the context
+        //      - assign the temporary variable to lhs + rhs
+        //  - if checked math
+        //      - put requirements on the new variable
+        //  - apply any knock on effects to parents (if lhs or rhs is part of an array, update the parent)
+        //  - add the result to the ctx return stack
         tracing::trace!(
             "binary op: {} {op} {}, assign: {}",
             lhs_cvar.display_name(self).into_expr_err(loc)?,
@@ -166,11 +178,7 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
             assign
         );
 
-        let unchecked = match op {
-            RangeOp::Add(u) | RangeOp::Sub(u) | RangeOp::Mul(u) | RangeOp::Div(u) => u,
-            _ => false,
-        };
-
+        let unchecked = op.unchecked();
         let new_lhs = if assign {
             let new = self.advance_var_in_ctx_forcible(arena, lhs_cvar, loc, ctx, true)?;
             let underlying = new.underlying_mut(self).into_expr_err(loc)?;
@@ -178,50 +186,38 @@ pub trait BinOp: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
 
             if let Some(ref mut dep_on) = underlying.dep_on {
                 dep_on.push(rhs_cvar);
-                dep_on.sort();
-                dep_on.dedup();
             } else {
                 new.set_dependent_on(self).into_expr_err(loc)?;
             }
 
             new
         } else {
-            // TODO: simplify the expression such that we match an existing tmp if possible
             let mut new_lhs_underlying =
                 ContextVar::new_bin_op_tmp(lhs_cvar, op, rhs_cvar, ctx, loc, self)
                     .into_expr_err(loc)?;
-            if let Ok(Some(existing)) =
-                self.get_unchanged_tmp_variable(arena, &new_lhs_underlying.display_name, ctx)
-            {
-                self.advance_var_in_ctx_forcible(arena, existing, loc, ctx, true)?
-            } else {
-                // will potentially mutate the ty from concrete to builtin with a concrete range
-                new_lhs_underlying
-                    .ty
-                    .concrete_to_builtin(self)
-                    .into_expr_err(loc)?;
 
-                let new_var = self.add_node(new_lhs_underlying);
-                ctx.add_var(new_var.into(), self).into_expr_err(loc)?;
-                self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
-                ContextVarNode::from(new_var)
-            }
+            // will potentially mutate the ty from concrete to builtin with a concrete range
+            new_lhs_underlying
+                .ty
+                .concrete_to_builtin(self)
+                .into_expr_err(loc)?;
+
+            let new_var = self.add_node(new_lhs_underlying);
+            ctx.add_var(new_var.into(), self).into_expr_err(loc)?;
+            self.add_edge(new_var, ctx, Edge::Context(ContextEdge::Variable));
+            ContextVarNode::from(new_var)
         };
 
         let new_rhs = rhs_cvar.latest_version_or_inherited_in_ctx(ctx, self);
 
-        let expr = Elem::Expr(RangeExpr::<Concrete>::new(
+        let expr = Elem::Expr(RangeExpr::new(
             Elem::from(Reference::new(
                 lhs_cvar
                     .latest_version_or_inherited_in_ctx(ctx, self)
                     .into(),
             )),
             op,
-            Elem::from(Reference::new(
-                rhs_cvar
-                    .latest_version_or_inherited_in_ctx(ctx, self)
-                    .into(),
-            )),
+            Elem::from(new_rhs),
         ));
 
         let mut e = expr.clone();

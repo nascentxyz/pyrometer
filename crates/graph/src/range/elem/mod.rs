@@ -140,6 +140,14 @@ impl TryFrom<FlatExpr> for RangeOp {
 }
 
 impl RangeOp {
+    pub fn unchecked(&self) -> bool {
+        use RangeOp::*;
+        match self {
+            Add(i) | Mul(i) | Sub(i) | Div(i) | Exp(i) => *i,
+            _ => false,
+        }
+    }
+
     pub fn commutative(&self) -> bool {
         use RangeOp::*;
         match self {
