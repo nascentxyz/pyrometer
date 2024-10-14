@@ -1,6 +1,6 @@
 //! Helper traits & blanket implementations that help facilitate performing function calls.
 use crate::{member_access::ListAccess, variable::Variable};
-
+use graph::nodes::RetType;
 use graph::{
     elem::Elem,
     nodes::{
@@ -354,15 +354,17 @@ pub trait CallerHelper: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + 
         {
             if let Some(ret_ctx) = callee_ctx.underlying(self).into_expr_err(loc)?.parent_ctx() {
                 let ret = ret_ctx.underlying(self).into_expr_err(loc)?.ret.clone();
+                let mut new_rets = vec![];
                 ret.iter().try_for_each(|ret| {
                     let cvar = self.advance_var_in_forced_ctx(ret.var(), ret.loc(), callee_ctx)?;
-                    callee_ctx
-                        .add_return_node(ret.loc(), cvar, self)
-                        .into_expr_err(ret.loc())?;
+                    match ret {
+                        RetType::Success(loc, _) => new_rets.push(RetType::Success(*loc, cvar)),
+                        RetType::Error(loc, _) => new_rets.push(RetType::Error(*loc, cvar)),
+                    }
                     self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Return));
-
                     Ok(())
                 })?;
+                callee_ctx.underlying_mut(self).into_expr_err(loc)?.ret = new_rets;
             }
         }
 

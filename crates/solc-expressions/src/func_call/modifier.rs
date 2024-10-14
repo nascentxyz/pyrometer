@@ -1,9 +1,13 @@
 //! Traits & blanket implementations that facilitate performing modifier function calls.
 
+use crate::context_builder::Flatten;
 use crate::{
     func_call::internal_call::InternalFuncCaller, func_caller::FuncCaller, helper::CallerHelper,
     ContextBuilder,
 };
+use graph::ContextEdge;
+use graph::Node;
+use shared::NodeIdx;
 
 use graph::{
     elem::Elem,
@@ -42,9 +46,10 @@ pub trait ModifierCaller:
     ) -> Result<(), ExprErr> {
         let mod_node = func_node.modifiers(self)[mod_state.num];
         tracing::trace!(
-            "calling modifier {} for func {}",
+            "calling modifier {} for func {} -- mod state: {:#?}",
             mod_node.name(self).into_expr_err(loc)?,
-            func_node.name(self).into_expr_err(loc)?
+            func_node.name(self).into_expr_err(loc)?,
+            mod_state
         );
 
         let input_exprs = func_node
@@ -52,19 +57,29 @@ pub trait ModifierCaller:
             .into_expr_err(loc)?;
 
         self.apply_to_edges(func_ctx, loc, arena, &|analyzer, arena, ctx, loc| {
+            // parse modifier input expressions
+            if !input_exprs.is_empty() {
+                let curr_parse_idx = func_ctx.parse_idx(analyzer);
+                input_exprs
+                    .iter()
+                    .for_each(|expr| analyzer.traverse_expression(expr, Some(false)));
+                func_ctx.underlying_mut(analyzer).unwrap().parse_idx = 0;
+                let mut stack = std::mem::take(analyzer.expr_stack_mut());
+                for _ in 0..stack.len() {
+                    analyzer.interpret_step(arena, func_ctx, loc, &mut stack)?;
+                }
+                func_ctx.underlying_mut(analyzer).unwrap().parse_idx = curr_parse_idx;
+            }
+
             if analyzer.debug_stack() {
                 tracing::trace!(
                     "stack for getting modifier inputs: {}, ctx: {},",
-                    mod_state
-                        .parent_ctx
-                        .debug_expr_stack_str(analyzer)
-                        .into_expr_err(loc)?,
-                    mod_state.parent_ctx.path(analyzer)
+                    func_ctx.debug_expr_stack_str(analyzer).into_expr_err(loc)?,
+                    func_ctx.path(analyzer)
                 );
             }
 
-            let mut backwards_inputs = mod_state
-                .parent_ctx
+            let mut backwards_inputs = func_ctx
                 .pop_n_latest_exprs(input_exprs.len(), loc, analyzer)
                 .into_expr_err(loc)?;
             backwards_inputs.reverse();
@@ -113,37 +128,13 @@ pub trait ModifierCaller:
                     let mut mstate = modifier_state.clone();
                     mstate.num += 1;
 
-                    let loc = mods[mstate.num]
-                        .underlying(analyzer)
-                        .into_expr_err(mstate.loc)?
-                        .loc;
-
-                    let subctx_kind = SubContextKind::new_fn_call(
-                        ctx,
-                        Some(modifier_state.parent_ctx),
-                        mods[mstate.num],
-                        false,
-                    );
-                    let new_parent_subctx = Context::add_subctx(
-                        subctx_kind,
-                        loc,
-                        analyzer,
-                        Some(modifier_state.clone()),
-                        ctx.contract_id(analyzer).unwrap(),
-                        true,
-                    )
-                    .unwrap();
-
-                    ctx.set_child_call(new_parent_subctx, analyzer)
-                        .into_expr_err(modifier_state.loc)?;
-
                     analyzer.call_modifier_for_fn(
                         arena,
                         mods[mstate.num]
                             .underlying(analyzer)
                             .into_expr_err(mstate.loc)?
                             .loc,
-                        new_parent_subctx,
+                        ctx,
                         mstate.parent_fn,
                         mstate,
                     )?;
@@ -167,6 +158,19 @@ pub trait ModifierCaller:
                     .unwrap();
                     ctx.set_child_call(new_parent_subctx, analyzer)
                         .into_expr_err(modifier_state.loc)?;
+
+                    let ctx_fork = analyzer.add_node(Node::FunctionCall);
+                    analyzer.add_edge(ctx_fork, ctx, Edge::Context(ContextEdge::Subcontext));
+                    analyzer.add_edge(
+                        ctx_fork,
+                        modifier_state.parent_fn,
+                        Edge::Context(ContextEdge::Call),
+                    );
+                    analyzer.add_edge(
+                        NodeIdx::from(new_parent_subctx.0),
+                        ctx_fork,
+                        Edge::Context(ContextEdge::Subcontext),
+                    );
 
                     // actually execute the parent function
                     analyzer.execute_call_inner(
