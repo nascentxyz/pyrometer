@@ -27,7 +27,7 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 Then:
 ```bash
 git clone https://github.com/nascentxyz/pyrometer
-cd pyrometer/cli
+cd pyrometer/crates/cli
 cargo install --path . --locked
 pyrometer <PATH_TO_SOLIDITY_FILE> --help
 ```
