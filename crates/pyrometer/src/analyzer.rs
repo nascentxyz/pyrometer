@@ -5,8 +5,8 @@ use graph::{nodes::*, ContextEdge, Edge, Node, VarType};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use shared::{AnalyzerLike, ApplyStats, GraphLike, NodeIdx, Search};
-use shared::{ExprErr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
-use solc_expressions::StatementParser;
+use shared::{ExprErr, ExprFlag, FlatExpr, IntoExprErr, RangeArena, USE_DEBUG_SITE};
+use solc_expressions::Flatten;
 use tokio::runtime::Runtime;
 use tracing::{error, trace, warn};
 
@@ -146,6 +146,11 @@ pub struct Analyzer {
     pub handled_funcs: Vec<FunctionNode>,
     /// Target Context to debug
     pub minimize_debug: Option<String>,
+
+    pub flattened: Vec<FlatExpr>,
+    pub expr_flag: Option<ExprFlag>,
+    pub current_asm_block: usize,
+    pub debug_stack: bool,
 }
 
 impl Default for Analyzer {
@@ -184,13 +189,17 @@ impl Default for Analyzer {
             },
             handled_funcs: Vec::default(),
             minimize_debug: None,
+            flattened: vec![],
+            expr_flag: None,
+            current_asm_block: 0,
+            debug_stack: false,
         };
         a.builtin_fn_inputs = builtin_fns::builtin_fns_inputs(&mut a);
 
         let msg = Msg::default();
         let block = Block::default();
-        let msg = a.graph.add_node(Node::Msg(msg)).into();
-        let block = a.graph.add_node(Node::Block(block)).into();
+        let msg = a.graph.add_node(Node::Msg(Box::new(msg))).into();
+        let block = a.graph.add_node(Node::Block(Box::new(block))).into();
         a.msg = msg;
         a.block = block;
         a.entry = a.add_node(Node::Entry);
@@ -359,7 +368,7 @@ impl Analyzer {
         expr: &Expression,
         parent: Option<NodeIdx>,
     ) -> Option<ExprRet> {
-        tracing::trace!("Parsing required compile-time evaluation");
+        tracing::trace!("Parsing required compile-time evaluation: {expr:?}, {parent:?}");
 
         let ctx = if let Some(parent) = parent {
             let pf = Function {
@@ -384,7 +393,8 @@ impl Analyzer {
         };
 
         let full_stmt = solang_parser::pt::Statement::Return(expr.loc(), Some(expr.clone()));
-        self.parse_ctx_statement(arena, &full_stmt, false, Some(ctx));
+        self.traverse_statement(&full_stmt, None);
+        self.interpret(ctx, full_stmt.loc(), arena);
         let edges = self.add_if_err(ctx.successful_edges(self).into_expr_err(expr.loc()))?;
         if edges.len() == 1 {
             let res = edges[0].return_nodes(self).into_expr_err(expr.loc());
@@ -573,69 +583,13 @@ impl Analyzer {
         });
 
         elems.into_iter().for_each(|final_pass_item| {
-            // final_pass_item
-            //     .funcs
-            //     .iter()
-            //     .for_each(|func| self.analyze_fn_calls(*func));
-            // let mut func_mapping = BTreeMap::default();
-            // let mut call_dep_graph: StableGraph<FunctionNode, usize> = StableGraph::default();
-            // let fn_calls_fns = std::mem::take(&mut self.fn_calls_fns);
-            // fn_calls_fns.iter().for_each(|(func, calls)| {
-            //     if !calls.is_empty() {
-            //         let func_idx = if let Some(idx) = func_mapping.get(func) {
-            //             *idx
-            //         } else {
-            //             let idx = call_dep_graph.add_node(*func);
-            //             func_mapping.insert(func, idx);
-            //             idx
-            //         };
-
-            //         calls.iter().for_each(|call| {
-            //             let call_idx = if let Some(idx) = func_mapping.get(call) {
-            //                 *idx
-            //             } else {
-            //                 let idx = call_dep_graph.add_node(*call);
-            //                 func_mapping.insert(call, idx);
-            //                 idx
-            //             };
-
-            //             call_dep_graph.add_edge(func_idx, call_idx, 0);
-            //         });
-            //     } else {
-            //         self.handled_funcs.push(*func);
-            //         if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-            //             self.parse_ctx_statement(arena, body, false, Some(*func));
-            //         }
-            //     }
-            // });
-
-            // let mut res = petgraph::algo::toposort(&call_dep_graph, None);
-            // while let Err(cycle) = res {
-            //     call_dep_graph.remove_node(cycle.node_id());
-            //     res = petgraph::algo::toposort(&call_dep_graph, None);
-            // }
-
-            // let indices = res.unwrap();
-
-            // indices.iter().for_each(|idx| {
-            //     let func = call_dep_graph.node_weight(*idx).unwrap();
-            //     if !self.handled_funcs.contains(func) {
-            //         self.handled_funcs.push(*func);
-            //         if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-            //             self.parse_ctx_statement(arena, body, false, Some(*func));
-            //         }
-            //     }
-            // });
-
             final_pass_item.funcs.into_iter().for_each(|func| {
-                if !self.handled_funcs.contains(&func) {
-                    if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(arena, body, false, Some(func));
-                    }
+                if !self.handled_funcs.contains(&func)
+                    && func.underlying(self).unwrap().body.is_some()
+                {
+                    self.interpret_entry_func(func, arena);
                 }
             });
-
-            // self.fn_calls_fns = fn_calls_fns;
         });
     }
 
@@ -1095,8 +1049,8 @@ impl Analyzer {
                 node.into()
             };
 
-        inherits.iter().for_each(|contract_node| {
-            self.add_edge(*contract_node, con_node, Edge::InheritedContract);
+        inherits.into_iter().flatten().for_each(|contract_node| {
+            self.add_edge(contract_node, con_node, Edge::InheritedContract);
         });
 
         let mut usings = vec![];
@@ -1194,7 +1148,6 @@ impl Analyzer {
                                     })
                                     .copied()
                                     .collect();
-
                                 if matches!(self.node(scope_node), Node::Contract(_)) {
                                     self.add_edge(
                                         scope_node,
@@ -1460,7 +1413,7 @@ impl Analyzer {
                 FunctionNode::from(node)
             }
             FunctionTy::Function => {
-                let fn_node = self.add_node(func);
+                let fn_node = self.add_node(func.clone());
                 if let Some(con_node) = con_node {
                     self.add_edge(fn_node, con_node, Edge::Func);
                 }

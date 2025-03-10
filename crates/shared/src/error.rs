@@ -153,6 +153,7 @@ pub enum ExprErr {
 impl ExprErr {
     /// Convert from a graph error
     pub fn from_graph_err(loc: Loc, graph_err: GraphError) -> Self {
+        // panic!("here");
         Self::GraphError(loc, graph_err)
     }
 

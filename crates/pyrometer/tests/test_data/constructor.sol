@@ -1,5 +1,9 @@
+// SPDX-License-Identifier: MIT or APACHE2
+pragma solidity ^0.8.0;
+
 contract A {
     address a;
+
     constructor(address _a) {
         a = _a;
     }
@@ -15,6 +19,7 @@ contract C is B {
 
 contract X {
     address x;
+
     constructor(address _x) {
         x = _x;
     }
@@ -29,9 +34,7 @@ contract D is Y, C {
 }
 
 abstract contract F {
-    function foo() public virtual {
-
-    }
+    function foo() public virtual {}
 }
 
 contract G is F {
@@ -41,11 +44,12 @@ contract G is F {
 }
 
 abstract contract H {
-    function foo() virtual external returns (uint) {}
+    function foo() external virtual returns (uint) {}
 }
 
 abstract contract I is H {
     H a;
+
     function liquidateBorrowInternal(H _a) internal returns (uint, uint, uint) {
         uint b = foo();
         uint b2 = _a.foo();
@@ -57,7 +61,7 @@ abstract contract I is H {
         return (b, b2, b3);
     }
 
-    function foo() public virtual override returns (uint){
+    function foo() public virtual override returns (uint) {
         return 1;
     }
 }

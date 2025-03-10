@@ -1,4 +1,4 @@
-use crate::{BinOp, ContextBuilder, ExpressionParser, Variable};
+use crate::{BinOp, Variable};
 
 use graph::{
     elem::*,
@@ -12,10 +12,7 @@ use graph::{
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::I256;
-use solang_parser::{
-    helpers::CodeLocation,
-    pt::{Expression, Loc},
-};
+use solang_parser::pt::Loc;
 
 use std::cmp::Ordering;
 
@@ -23,637 +20,44 @@ impl<T> Require for T where T: Variable + BinOp + Sized + AnalyzerBackend {}
 
 /// Deals with require and assert statements, as well as adjusts bounds for variables
 pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
-    /// Inverts a comparator expression
-    fn inverse_expr(&self, expr: Expression) -> Expression {
-        match expr {
-            Expression::Equal(loc, lhs, rhs) => Expression::NotEqual(loc, lhs, rhs),
-            Expression::NotEqual(loc, lhs, rhs) => Expression::Equal(loc, lhs, rhs),
-            Expression::Less(loc, lhs, rhs) => Expression::MoreEqual(loc, lhs, rhs),
-            Expression::More(loc, lhs, rhs) => Expression::LessEqual(loc, lhs, rhs),
-            Expression::MoreEqual(loc, lhs, rhs) => Expression::Less(loc, lhs, rhs),
-            Expression::LessEqual(loc, lhs, rhs) => Expression::More(loc, lhs, rhs),
-            // Expression::And(loc, lhs, rhs) => {
-            //     Expression::Or(loc, Box::new(self.inverse_expr(*lhs)), Box::new(self.inverse_expr(*rhs)))
-            // }
-            // Expression::Or(loc, lhs, rhs) => {
-            //     Expression::And(loc, Box::new(self.inverse_expr(*lhs)), Box::new(self.inverse_expr(*rhs)))
-            // }
-            // Expression::Not(loc, lhs) => {
-            //     Expression::Equal(loc, lhs, Box::new(Expression::BoolLiteral(loc, true)))
-            // }
-            e => Expression::Not(e.loc(), Box::new(e)),
-        }
-    }
-
-    /// Handles a require expression
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn handle_require(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        inputs: &[Expression],
-        ctx: ContextNode,
-    ) -> Result<(), ExprErr> {
-        ctx.add_gas_cost(self, shared::gas::BIN_OP_GAS)
-            .into_expr_err(inputs[0].loc())?;
-        match inputs.first().expect("No lhs input for require statement") {
-            Expression::Equal(loc, lhs, rhs) => {
-                self.parse_ctx_expr(arena, rhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "Require operation `==` had no right hand side".to_string(),
-                        ));
-                    };
-
-                    let rhs_paths = rhs_paths.flatten();
-
-                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    analyzer.parse_ctx_expr(arena, lhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(lhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Require operation `==` had no left hand side".to_string(),
-                            ));
-                        };
-
-                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &lhs_paths.flatten(),
-                            &rhs_paths,
-                            RangeOp::Eq,
-                            RangeOp::Eq,
-                            (RangeOp::Neq, RangeOp::Eq),
-                        )
-                    })
-                })
-            }
-            Expression::NotEqual(loc, lhs, rhs) => {
-                self.parse_ctx_expr(arena, rhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "Require operation `!=` had no right hand side".to_string(),
-                        ));
-                    };
-                    let rhs_paths = rhs_paths.flatten();
-
-                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.parse_ctx_expr(arena, lhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(lhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Require operation `!=` had no left hand side".to_string(),
-                            ));
-                        };
-                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &lhs_paths.flatten(),
-                            &rhs_paths,
-                            RangeOp::Neq,
-                            RangeOp::Neq,
-                            (RangeOp::Eq, RangeOp::Neq),
-                        )
-                    })
-                })
-            }
-            Expression::Less(loc, lhs, rhs) => {
-                self.parse_ctx_expr(arena, rhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "Require operation `<` had no right hand side".to_string(),
-                        ));
-                    };
-                    let rhs_paths = rhs_paths.flatten();
-
-                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    analyzer.parse_ctx_expr(arena, lhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(lhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Require operation `<` had no left hand side".to_string(),
-                            ));
-                        };
-                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &lhs_paths.flatten(),
-                            &rhs_paths,
-                            RangeOp::Lt,
-                            RangeOp::Gt,
-                            (RangeOp::Gt, RangeOp::Lt),
-                        )
-                    })
-                })
-            }
-            Expression::More(loc, lhs, rhs) => {
-                self.parse_ctx_expr(arena, rhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "Require operation `>` had no right hand side".to_string(),
-                        ));
-                    };
-                    let rhs_paths = rhs_paths.flatten();
-
-                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    analyzer.parse_ctx_expr(arena, lhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(lhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Require operation `>` had no left hand side".to_string(),
-                            ));
-                        };
-                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &lhs_paths.flatten(),
-                            &rhs_paths,
-                            RangeOp::Gt,
-                            RangeOp::Lt,
-                            (RangeOp::Lt, RangeOp::Gt),
-                        )
-                    })
-                })
-            }
-            Expression::MoreEqual(loc, lhs, rhs) => {
-                self.parse_ctx_expr(arena, rhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "Require operation `>=` had no right hand side".to_string(),
-                        ));
-                    };
-                    let rhs_paths = rhs_paths.flatten();
-
-                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    analyzer.parse_ctx_expr(arena, lhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(lhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Require operation `>=` had no left hand side".to_string(),
-                            ));
-                        };
-                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &lhs_paths.flatten(),
-                            &rhs_paths,
-                            RangeOp::Gte,
-                            RangeOp::Lte,
-                            (RangeOp::Lte, RangeOp::Gte),
-                        )
-                    })
-                })
-            }
-            Expression::LessEqual(loc, lhs, rhs) => {
-                self.parse_ctx_expr(arena, rhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(rhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoRhs(
-                            loc,
-                            "Require operation `<=` had no right hand side".to_string(),
-                        ));
-                    };
-                    let rhs_paths = rhs_paths.flatten();
-
-                    if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    analyzer.parse_ctx_expr(arena, lhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(lhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Require operation `<=` had no left hand side".to_string(),
-                            ));
-                        };
-                        if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &lhs_paths.flatten(),
-                            &rhs_paths,
-                            RangeOp::Lte,
-                            RangeOp::Gte,
-                            (RangeOp::Gte, RangeOp::Lte),
-                        )
-                    })
-                })
-            }
-            Expression::Not(loc, lhs) => {
-                self.parse_ctx_expr(arena, lhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "Require operation `NOT` had no left hand side".to_string(),
-                        ));
-                    };
-                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    let cnode = ConcreteNode::from(
-                        analyzer.add_node(Node::Concrete(Concrete::Bool(false))),
-                    );
-                    let tmp_false = Node::ContextVar(
-                        ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
-                            .into_expr_err(loc)?,
-                    );
-                    let rhs_paths =
-                        ExprRet::Single(ContextVarNode::from(analyzer.add_node(tmp_false)).into());
-                    analyzer.handle_require_inner(
-                        arena,
-                        ctx,
-                        loc,
-                        &lhs_paths,
-                        &rhs_paths,
-                        RangeOp::Eq,
-                        RangeOp::Eq,
-                        (RangeOp::Neq, RangeOp::Eq),
-                    )
-                })
-            }
-            Expression::And(loc, lhs, rhs) => {
-                self.parse_ctx_expr(arena, lhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "Require operation `&&` had no left hand side".to_string(),
-                        ));
-                    };
-
-                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    analyzer.parse_ctx_expr(arena, rhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(rhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Require operation `&&` had no left hand side".to_string(),
-                            ));
-                        };
-
-                        if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-
-                        let cnode = ConcreteNode::from(
-                            analyzer.add_node(Node::Concrete(Concrete::Bool(true))),
-                        );
-                        let tmp_true = Node::ContextVar(
-                            ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
-                                .into_expr_err(loc)?,
-                        );
-                        let node = analyzer.add_node(tmp_true);
-                        ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
-                        analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                        let tmp_rhs_paths = ExprRet::Single(node);
-
-                        // NOTE: the following is *sequence dependent*
-                        // we want to update the parts *before* the `And` op
-                        // to ensure the ctx_dep is correct
-
-                        // update the part's bounds
-                        let lhs_cvar =
-                            ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
-                        let underlying = lhs_cvar.underlying(analyzer).into_expr_err(loc)?;
-                        if let Some(tmp) = underlying.tmp_of {
-                            if let Some((op, _inv_op, pair)) = tmp.op.require_parts() {
-                                analyzer.handle_require_inner(
-                                    arena,
-                                    ctx,
-                                    loc,
-                                    &ExprRet::Single(tmp.lhs.into()),
-                                    &ExprRet::Single(tmp.rhs.unwrap().into()),
-                                    op,
-                                    op,
-                                    pair,
-                                )?;
-                            }
-                        }
-
-                        // update the part's bounds
-                        let rhs_cvar =
-                            ContextVarNode::from(rhs_paths.expect_single().into_expr_err(loc)?);
-                        let underlying = rhs_cvar.underlying(analyzer).into_expr_err(loc)?;
-                        if let Some(tmp) = underlying.tmp_of {
-                            if let Some((op, _inv_op, pair)) = tmp.op.require_parts() {
-                                analyzer.handle_require_inner(
-                                    arena,
-                                    ctx,
-                                    loc,
-                                    &ExprRet::Single(tmp.lhs.into()),
-                                    &ExprRet::Single(tmp.rhs.unwrap().into()),
-                                    op,
-                                    op,
-                                    pair,
-                                )?;
-                            }
-                        }
-
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &lhs_paths,
-                            &tmp_rhs_paths,
-                            RangeOp::Eq,
-                            RangeOp::Eq,
-                            (RangeOp::Neq, RangeOp::Eq),
-                        )?;
-
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &rhs_paths,
-                            &tmp_rhs_paths,
-                            RangeOp::Eq,
-                            RangeOp::Eq,
-                            (RangeOp::Neq, RangeOp::Eq),
-                        )?;
-
-                        Ok(())
-                    })
-                })
-            }
-            Expression::Or(loc, lhs, rhs) => {
-                self.parse_ctx_expr(arena, lhs, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "Require operation `||` had no left hand side".to_string(),
-                        ));
-                    };
-                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    analyzer.parse_ctx_expr(arena, rhs, ctx)?;
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(rhs_paths) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Require operation `||` had no left hand side".to_string(),
-                            ));
-                        };
-
-                        if matches!(rhs_paths, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(rhs_paths, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-
-                        let lhs_cvar =
-                            ContextVarNode::from(lhs_paths.expect_single().into_expr_err(loc)?);
-                        let rhs_cvar =
-                            ContextVarNode::from(rhs_paths.expect_single().into_expr_err(loc)?);
-
-                        let elem = Elem::Expr(RangeExpr::new(
-                            lhs_cvar.into(),
-                            RangeOp::Or,
-                            rhs_cvar.into(),
-                        ));
-                        let range = SolcRange::new(elem.clone(), elem, vec![]);
-
-                        let new_lhs_underlying = ContextVar {
-                            loc: Some(loc),
-                            name: format!(
-                                "tmp{}({} {} {})",
-                                ctx.new_tmp(analyzer).into_expr_err(loc)?,
-                                lhs_cvar.name(analyzer).into_expr_err(loc)?,
-                                RangeOp::Or.to_string(),
-                                rhs_cvar.name(analyzer).into_expr_err(loc)?
-                            ),
-                            display_name: format!(
-                                "({} {} {})",
-                                lhs_cvar.display_name(analyzer).into_expr_err(loc)?,
-                                RangeOp::Or.to_string(),
-                                rhs_cvar.display_name(analyzer).into_expr_err(loc)?
-                            ),
-                            storage: None,
-                            is_tmp: true,
-                            is_symbolic: lhs_cvar.is_symbolic(analyzer).into_expr_err(loc)?
-                                || rhs_cvar.is_symbolic(analyzer).into_expr_err(loc)?,
-                            is_return: false,
-                            tmp_of: Some(TmpConstruction::new(
-                                lhs_cvar,
-                                RangeOp::Or,
-                                Some(rhs_cvar),
-                            )),
-                            dep_on: {
-                                let mut deps =
-                                    lhs_cvar.dependent_on(analyzer, true).into_expr_err(loc)?;
-                                deps.extend(
-                                    rhs_cvar.dependent_on(analyzer, true).into_expr_err(loc)?,
-                                );
-                                Some(deps)
-                            },
-                            ty: VarType::BuiltIn(
-                                analyzer.builtin_or_add(Builtin::Bool).into(),
-                                Some(range),
-                            ),
-                        };
-                        let or_var = ContextVarNode::from(
-                            analyzer.add_node(Node::ContextVar(new_lhs_underlying)),
-                        );
-                        let cnode = ConcreteNode::from(
-                            analyzer.add_node(Node::Concrete(Concrete::Bool(true))),
-                        );
-                        let tmp_true = Node::ContextVar(
-                            ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, analyzer)
-                                .into_expr_err(loc)?,
-                        );
-                        let node = analyzer.add_node(tmp_true);
-                        ctx.add_var(node.into(), analyzer).into_expr_err(loc)?;
-                        analyzer.add_edge(node, ctx, Edge::Context(ContextEdge::Variable));
-                        let rhs_paths = ExprRet::Single(node);
-                        analyzer.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            &ExprRet::Single(or_var.into()),
-                            &rhs_paths,
-                            RangeOp::Eq,
-                            RangeOp::Eq,
-                            (RangeOp::Neq, RangeOp::Eq),
-                        )
-                    })
-                })
-            }
-            other => {
-                self.parse_ctx_expr(arena, other, ctx)?;
-                self.apply_to_edges(ctx, other.loc(), arena, &|analyzer, arena, ctx, loc| {
-                    let Some(lhs_paths) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                    else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "Require operation had no left hand side".to_string(),
-                        ));
-                    };
-                    if matches!(lhs_paths, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(lhs_paths, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-
-                    let tmp_true = analyzer.add_concrete_var(ctx, Concrete::Bool(true), loc)?;
-                    let rhs_paths = ExprRet::Single(tmp_true.0.into());
-                    analyzer.handle_require_inner(
-                        arena,
-                        ctx,
-                        loc,
-                        &lhs_paths,
-                        &rhs_paths,
-                        RangeOp::Eq,
-                        RangeOp::Eq,
-                        (RangeOp::Neq, RangeOp::Eq),
-                    )
-                })
-            }
-        }
-    }
-
     /// Do matching on [`ExprRet`]s to actually perform the require statement evaluation
     fn handle_require_inner(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         lhs_paths: &ExprRet,
         rhs_paths: &ExprRet,
         op: RangeOp,
-        rhs_op: RangeOp,
-        recursion_ops: (RangeOp, RangeOp),
+        loc: Loc,
     ) -> Result<(), ExprErr> {
         match (lhs_paths, rhs_paths) {
             (_, ExprRet::Null) | (ExprRet::Null, _) => Ok(()),
             (_, ExprRet::CtxKilled(..)) | (ExprRet::CtxKilled(..), _) => Ok(()),
+            (ExprRet::SingleLiteral(lhs), ExprRet::SingleLiteral(rhs)) => self
+                .handle_require_inner(
+                    arena,
+                    ctx,
+                    &ExprRet::Single(*lhs),
+                    &ExprRet::Single(*rhs),
+                    op,
+                    loc,
+                ),
             (ExprRet::SingleLiteral(lhs), ExprRet::Single(rhs)) => {
+                // ie: require(5 == a);
                 ContextVarNode::from(*lhs)
                     .cast_from(&ContextVarNode::from(*rhs), self, arena)
                     .into_expr_err(loc)?;
-                self.handle_require_inner(
-                    arena,
-                    ctx,
-                    loc,
-                    &ExprRet::Single(*lhs),
-                    rhs_paths,
-                    op,
-                    rhs_op,
-                    recursion_ops,
-                )
+                self.handle_require_inner(arena, ctx, &ExprRet::Single(*lhs), rhs_paths, op, loc)
             }
             (ExprRet::Single(lhs), ExprRet::SingleLiteral(rhs)) => {
+                // ie: require(a == 5);
                 ContextVarNode::from(*rhs)
                     .cast_from(&ContextVarNode::from(*lhs), self, arena)
                     .into_expr_err(loc)?;
-                self.handle_require_inner(
-                    arena,
-                    ctx,
-                    loc,
-                    lhs_paths,
-                    &ExprRet::Single(*rhs),
-                    op,
-                    rhs_op,
-                    recursion_ops,
-                )
+                self.handle_require_inner(arena, ctx, lhs_paths, &ExprRet::Single(*rhs), op, loc)
             }
             (ExprRet::Single(lhs), ExprRet::Single(rhs)) => {
+                // ie: require(a == b);
                 let lhs_cvar =
                     ContextVarNode::from(*lhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let new_lhs = self.advance_var_in_ctx(lhs_cvar, loc, ctx)?;
@@ -661,73 +65,46 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     ContextVarNode::from(*rhs).latest_version_or_inherited_in_ctx(ctx, self);
                 let new_rhs = self.advance_var_in_ctx(rhs_cvar, loc, ctx)?;
 
-                self.require(arena, new_lhs, new_rhs, ctx, loc, op, rhs_op, recursion_ops)?;
+                self.require(arena, ctx, new_lhs, new_rhs, op, loc)?;
                 Ok(())
             }
             (l @ ExprRet::Single(_) | l @ ExprRet::SingleLiteral(_), ExprRet::Multi(rhs_sides)) => {
+                // ie: require(a == (b, c)); (not possible)
                 rhs_sides.iter().try_for_each(|expr_ret| {
-                    self.handle_require_inner(
-                        arena,
-                        ctx,
-                        loc,
-                        l,
-                        expr_ret,
-                        op,
-                        rhs_op,
-                        recursion_ops,
-                    )
+                    self.handle_require_inner(arena, ctx, l, expr_ret, op, loc)
                 })
             }
             (ExprRet::Multi(lhs_sides), r @ ExprRet::Single(_) | r @ ExprRet::SingleLiteral(_)) => {
+                // ie: require((a, b) == c); (not possible)
                 lhs_sides.iter().try_for_each(|expr_ret| {
-                    self.handle_require_inner(
-                        arena,
-                        ctx,
-                        loc,
-                        expr_ret,
-                        r,
-                        op,
-                        rhs_op,
-                        recursion_ops,
-                    )
+                    self.handle_require_inner(arena, ctx, expr_ret, r, op, loc)
                 })
             }
             (ExprRet::Multi(lhs_sides), ExprRet::Multi(rhs_sides)) => {
+                // ie: require((a, b) == (c, d)); (not possible)
+                // ie: require((a, b) == (c, d, e)); (not possible)
                 // try to zip sides if they are the same length
                 if lhs_sides.len() == rhs_sides.len() {
+                    // ie: require((a, b) == (c, d)); (not possible)
                     lhs_sides.iter().zip(rhs_sides.iter()).try_for_each(
                         |(lhs_expr_ret, rhs_expr_ret)| {
                             self.handle_require_inner(
                                 arena,
                                 ctx,
-                                loc,
                                 lhs_expr_ret,
                                 rhs_expr_ret,
                                 op,
-                                rhs_op,
-                                recursion_ops,
+                                loc,
                             )
                         },
                     )
                 } else {
+                    // ie: require((a, b) == (c, d, e)); (not possible)
                     rhs_sides.iter().try_for_each(|rhs_expr_ret| {
-                        self.handle_require_inner(
-                            arena,
-                            ctx,
-                            loc,
-                            lhs_paths,
-                            rhs_expr_ret,
-                            op,
-                            rhs_op,
-                            recursion_ops,
-                        )
+                        self.handle_require_inner(arena, ctx, lhs_paths, rhs_expr_ret, op, loc)
                     })
                 }
             }
-            (e, f) => Err(ExprErr::UnhandledCombo(
-                loc,
-                format!("Unhandled combination in require: {:?} {:?}", e, f),
-            )),
         }
     }
 
@@ -738,22 +115,21 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
     fn require(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
+        ctx: ContextNode,
         mut new_lhs: ContextVarNode,
         mut new_rhs: ContextVarNode,
-        ctx: ContextNode,
-        loc: Loc,
         op: RangeOp,
-        rhs_op: RangeOp,
-        _recursion_ops: (RangeOp, RangeOp),
+        loc: Loc,
     ) -> Result<Option<ContextVarNode>, ExprErr> {
         tracing::trace!(
-            "require: {} {} {}",
+            "require: {} {op} {}",
             new_lhs.display_name(self).into_expr_err(loc)?,
-            op.to_string(),
             new_rhs.display_name(self).into_expr_err(loc)?
         );
         let mut any_unsat = false;
         let mut tmp_cvar = None;
+
+        let rhs_op = op.require_rhs().unwrap();
 
         if let Some(lhs_range) = new_lhs
             .latest_version_or_inherited_in_ctx(ctx, self)
@@ -823,9 +199,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 (new_lhs.display_name(self).into_expr_err(loc)?).to_string()
             } else {
                 format!(
-                    "({} {} {rhs_display_name})",
+                    "({} {op} {rhs_display_name})",
                     new_lhs.display_name(self).into_expr_err(loc)?,
-                    op.to_string(),
                 )
             };
 
@@ -843,7 +218,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     "tmp{}({} {} {})",
                     ctx.new_tmp(self).into_expr_err(loc)?,
                     new_lhs.name(self).into_expr_err(loc)?,
-                    op.to_string(),
+                    op,
                     new_rhs.name(self).into_expr_err(loc)?,
                 ),
                 display_name: display_name.clone(),
@@ -866,12 +241,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 ),
             };
 
-            let conditional_cvar =
-                ContextVarNode::from(self.add_node(Node::ContextVar(conditional_var)));
+            let conditional_cvar = ContextVarNode::from(self.add_node(conditional_var));
             ctx.add_var(conditional_cvar, self).into_expr_err(loc)?;
             self.add_edge(conditional_cvar, ctx, Edge::Context(ContextEdge::Variable));
 
-            let cnode = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(true))));
+            let cnode = ConcreteNode::from(self.add_node(Concrete::Bool(true)));
             let tmp_true = Node::ContextVar(
                 ContextVar::new_from_concrete(Loc::Implicit, ctx, cnode, self)
                     .into_expr_err(loc)?,
@@ -887,7 +261,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     "tmp{}(({} {} {}) == true)",
                     ctx.new_tmp(self).into_expr_err(loc)?,
                     new_lhs.name(self).into_expr_err(loc)?,
-                    op.to_string(),
+                    op,
                     new_rhs.name(self).into_expr_err(loc)?,
                 ),
                 display_name: format!("{display_name} == true"),
@@ -922,7 +296,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 ),
             };
 
-            let cvar = ContextVarNode::from(self.add_node(Node::ContextVar(tmp_var)));
+            let cvar = ContextVarNode::from(self.add_node(tmp_var));
             ctx.add_var(cvar, self).into_expr_err(loc)?;
             self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
 
@@ -945,18 +319,6 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             new_lhs.display_name(self).unwrap(),
             new_lhs.is_tmp(self).unwrap()
         );
-        // if let Some(tmp) = new_lhs.tmp_of(self).into_expr_err(loc)? {
-        //     if tmp.op.inverse().is_some() && !matches!(op, RangeOp::Eq | RangeOp::Neq) {
-        //         // self.range_recursion(tmp, recursion_ops, new_rhs, ctx, loc, &mut any_unsat)?;
-        //     } else {
-        //         match tmp.op {
-        //             RangeOp::Not => {}
-        //             _ => {
-        //                 self.uninvertable_range_recursion(arena, tmp, new_lhs, new_rhs, loc, ctx);
-        //             }
-        //         }
-        //     }
-        // }
 
         Ok(tmp_cvar)
     }
@@ -1057,7 +419,9 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
             }
             RangeOp::Neq => {
                 // check if contains
-                let mut elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self));
+                let mut elem = Elem::from(const_var.latest_version_or_inherited_in_ctx(ctx, self))
+                    .minimize(self, arena)
+                    .unwrap();
 
                 // potentially add the const var as a range exclusion
                 if let Some(Ordering::Equal) = nonconst_range
@@ -1132,7 +496,7 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                         nonconst_var.display_name(self).unwrap(),
                         nonconst_range.max,
                         nonconst_var.display_name(self).unwrap(),
-                        op.to_string(),
+                        op,
                         const_var.display_name(self).unwrap(),
                         const_var.evaled_range_min(self, arena).unwrap().unwrap()
                     )));
@@ -1387,8 +751,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     lhs_elem,
                 ));
 
-                let new_new_lhs = self.advance_var_in_curr_ctx(new_lhs, loc)?;
-                let new_new_rhs = self.advance_var_in_curr_ctx(new_rhs, loc)?;
+                let new_new_lhs = self.advance_var_in_ctx(new_lhs, loc, ctx)?;
+                let new_new_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
 
                 new_new_lhs
                     .set_range_min(self, arena, new_min.clone())
@@ -1421,8 +785,8 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
 
                 let one = Concrete::one(&min_conc.val).expect("Cannot decrement range elem by one");
 
-                let new_new_lhs = self.advance_var_in_curr_ctx(new_lhs, loc)?;
-                let new_new_rhs = self.advance_var_in_curr_ctx(new_rhs, loc)?;
+                let new_new_lhs = self.advance_var_in_ctx(new_lhs, loc, ctx)?;
+                let new_new_rhs = self.advance_var_in_ctx(new_rhs, loc, ctx)?;
 
                 new_new_lhs
                     .latest_version_or_inherited_in_ctx(ctx, self)
@@ -1517,11 +881,12 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 }
                 tmp.expect_single().into_expr_err(loc)?
             });
-            let new_underlying_lhs = self.advance_var_in_curr_ctx(
+            let new_underlying_lhs = self.advance_var_in_ctx(
                 tmp_construction
                     .lhs
                     .latest_version_or_inherited_in_ctx(ctx, self),
                 loc,
+                ctx,
             )?;
             if let Some(lhs_range) = new_underlying_lhs
                 .underlying(self)
@@ -1574,13 +939,11 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                 let (needs_inverse, adjusted_gt_rhs) = match tmp_construction.op {
                     RangeOp::Sub(..) => {
                         let concrete = ConcreteNode(
-                            self.add_node(Node::Concrete(Concrete::Int(256, I256::from(-1i32))))
-                                .index(),
+                            self.add_node(Concrete::Int(256, I256::from(-1i32))).index(),
                         );
                         let lhs_cvar = ContextVar::new_from_concrete(loc, ctx, concrete, self)
                             .into_expr_err(loc)?;
-                        let tmp_lhs =
-                            ContextVarNode::from(self.add_node(Node::ContextVar(lhs_cvar)));
+                        let tmp_lhs = ContextVarNode::from(self.add_node(lhs_cvar));
 
                         // tmp_rhs = rhs_cvar * -1
                         let tmp_rhs = self.op(
@@ -1746,9 +1109,10 @@ pub trait Require: AnalyzerBackend + Variable + BinOp + Sized {
                     e => panic!("here {e:?}"),
                 };
 
-                let new_underlying_rhs = self.advance_var_in_curr_ctx(
+                let new_underlying_rhs = self.advance_var_in_ctx(
                     rhs.latest_version_or_inherited_in_ctx(ctx, self),
                     loc,
+                    ctx,
                 )?;
                 if let Some(lhs_range) = new_underlying_rhs
                     .underlying(self)

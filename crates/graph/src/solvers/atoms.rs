@@ -269,7 +269,8 @@ pub static LIA_OPS: &[RangeOp] = &[
     RangeOp::Div(true),
     RangeOp::Div(false),
     RangeOp::Mod,
-    RangeOp::Exp,
+    RangeOp::Exp(false),
+    RangeOp::Exp(true),
 ];
 
 pub trait Atomize {
@@ -307,10 +308,11 @@ impl Atomize for Elem<Concrete> {
             Elem::Concrete(_) | Elem::Reference(_) => AtomOrPart::Part(self.clone()),
             Elem::ConcreteDyn(_) => AtomOrPart::Part(self.clone()),
             _e @ Elem::Expr(expr) => {
-                // println!("collapsing: {e}");
                 match collapse(*expr.lhs.clone(), expr.op, *expr.rhs.clone(), arena) {
-                    MaybeCollapsed::Concretes(_l, _r) => {
-                        let exec_res = expr.exec_op(true, analyzer, arena).unwrap();
+                    MaybeCollapsed::Concretes(l, op, r) => {
+                        let exec_res = RangeExpr::new(l, op, r)
+                            .exec_op(true, analyzer, arena)
+                            .unwrap();
                         return exec_res.atoms_or_part(Some(self), analyzer, arena);
                     }
                     MaybeCollapsed::Collapsed(elem) => {
@@ -324,7 +326,6 @@ impl Atomize for Elem<Concrete> {
                     expr.rhs.atoms_or_part(Some(self), analyzer, arena),
                 ) {
                     (ref lp @ AtomOrPart::Part(ref l), ref rp @ AtomOrPart::Part(ref r)) => {
-                        // println!("part part");
                         match (l, r) {
                             (_, Elem::Arena(_)) => todo!(),
                             (Elem::Arena(_), _) => todo!(),
@@ -383,16 +384,12 @@ impl Atomize for Elem<Concrete> {
                         }
                     }
                     (AtomOrPart::Atom(l_atom), r @ AtomOrPart::Part(_)) => {
-                        // println!("atom part");
-
                         AtomOrPart::Atom(l_atom.add_rhs(expr.op, r))
                     }
                     (l @ AtomOrPart::Part(_), AtomOrPart::Atom(r_atom)) => {
-                        // println!("part atom");
                         AtomOrPart::Atom(r_atom.add_lhs(expr.op, l))
                     }
                     (AtomOrPart::Atom(l_atoms), AtomOrPart::Atom(r_atoms)) => {
-                        // println!("atom atom");
                         AtomOrPart::Atom(r_atoms.add_lhs(expr.op, AtomOrPart::Atom(l_atoms)))
                     }
                 }
@@ -410,14 +407,12 @@ impl Atomize for Elem<Concrete> {
         use Elem::*;
         tracing::trace!("atomize: {}", self);
         match self {
-            Reference(_) => None,   //{ println!("was dyn"); None},
-            Null => None,           //{ println!("was null"); None},
-            Concrete(_c) => None,   //{ println!("was conc: {}", _c.val.as_human_string()); None },
-            ConcreteDyn(_) => None, //{ println!("was concDyn"); None},
+            Reference(_) => None,
+            Null => None,
+            Concrete(_c) => None,
+            ConcreteDyn(_) => None,
             Expr(_) => {
-                // println!("atomized: was expr");
                 let AtomOrPart::Atom(mut a) = self.atoms_or_part(None, analyzer, arena) else {
-                    // println!("returning none");
                     return None;
                 };
                 a.update_max_ty();

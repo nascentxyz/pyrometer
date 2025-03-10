@@ -681,7 +681,6 @@ pub fn exec_bit_not(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ethers_core::types::{I256, U256};
     use solang_parser::pt::Loc;
 
     #[test]

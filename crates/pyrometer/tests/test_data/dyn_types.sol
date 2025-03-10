@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT or APACHE2
+pragma solidity ^0.8.0;
+
 contract DynTypes {
     uint256[] storeVar;
 
@@ -7,15 +10,16 @@ contract DynTypes {
     }
 
     mapping(address => Strukt) public someMapping;
+    mapping(address => Strukt[]) public someMapping2;
 
-    function bytes_dyn(bytes calldata x) public {
+    function bytes_dyn(bytes calldata x) public pure {
         bytes memory y = x;
         require(x.length < 10);
         y[8] = 0xff;
         require(y.length == 9);
     }
 
-    function array_dyn(uint256[] memory x) public {
+    function array_dyn(uint256[] memory x) public pure {
         x[0] = 5;
         require(x.length < 10);
         uint256[] memory y = x;
@@ -23,10 +27,7 @@ contract DynTypes {
         require(y.length == 9);
     }
 
-    function nested_bytes_dyn(
-        bytes[] memory x,
-        uint y
-    ) public returns (bytes1) {
+    function nested_bytes_dyn(bytes[] memory x, uint y) public pure {
         bytes memory a = hex"1337";
         x[0] = a;
         require(x[0][0] == hex"13");
@@ -51,11 +52,11 @@ contract DynTypes {
         require(y == x);
     }
 
-    function indexInto() public returns (uint256) {
+    function indexInto() public view returns (uint256) {
         return storeVar[basicFunc()];
     }
 
-    function basicFunc() public returns (uint256) {
+    function basicFunc() public pure returns (uint256) {
         return 1;
     }
 
@@ -69,15 +70,58 @@ contract DynTypes {
 
     address[] t;
 
-    function inLoop(address holder, address[] memory tokens) public {
+    function inLoop(address holder, address[] memory tokens) public pure {
         address[] memory h = new address[](1);
         h[0] = holder;
         inLoop(h, tokens);
     }
 
-    function inLoop(address[] memory holders, address[] memory tokens) public {
+    function inLoop(address[] memory holders, address[] memory) public pure {
         for (uint j = 0; j < holders.length; j++) {
             address holder = holders[j];
+            holder;
         }
+    }
+
+    struct DontUseMoreThanOnce {
+        uint256 a;
+        uint256 b;
+    }
+
+    function dynUserType() public {
+        DontUseMoreThanOnce[] memory dont = new DontUseMoreThanOnce[](1);
+        dont[0].a = 100;
+        dont[0].b = 100;
+        require(dont[0].a == 100);
+    }
+
+    function getReturnedUserType() public pure {
+        // Strukt[] memory strukt = returnUserType()[0];
+        Strukt memory strukt = returnUserType()[0];
+        require(strukt.a == 100);
+    }
+
+    function returnUserType() public pure returns (Strukt[] memory) {
+        Strukt[] memory strukt = new Strukt[](1);
+        strukt[0].a = 100;
+        strukt[0].b = 100;
+        return strukt;
+    }
+
+    function multiDimensionalArray() public returns (bool z) {
+        uint256[][] memory multiArray = new uint256[][](2);
+        uint256[] memory indices = new uint256[](2);
+
+        indices[0] = 0;
+        indices[1] = 1;
+
+        for (uint i = 0; i < multiArray.length; i++) {
+            multiArray[i] = new uint256[](2);
+            for (uint j = 0; j < multiArray[i].length; j++) {
+                multiArray[i][j] = 1;
+            }
+        }
+
+        z = true;
     }
 }

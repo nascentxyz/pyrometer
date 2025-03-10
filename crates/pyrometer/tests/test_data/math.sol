@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT or APACHE2
+pragma solidity ^0.8.0;
+
 contract Div {
     function div(uint256 x, uint256 y) public pure returns (uint256) {
         return x / y;
@@ -7,7 +10,7 @@ contract Div {
         return x / y;
     }
 
-    function div_conc() public pure returns (uint256) {
+    function div_conc() public pure {
         uint256 a1 = div(100, 1);
         require(a1 == 100);
         uint256 a2 = div(100, 2);
@@ -126,7 +129,7 @@ contract Mul {
         return x * y;
     }
 
-    function mul_conc() public pure returns (uint256) {
+    function mul_conc() public pure {
         uint256 a1 = mul(100, 1);
         require(a1 == 100);
         uint256 a2 = mul(100, 2);
@@ -245,7 +248,7 @@ contract Exp {
         return x ** y;
     }
 
-    function exp_conc() public pure returns (uint256) {
+    function exp_conc() public pure {
         uint256 a1 = exp(0, 0);
         require(a1 == 1);
         uint256 a2 = exp(0, 1);
@@ -255,7 +258,10 @@ contract Exp {
         uint256 a4 = exp(100, 8);
         require(a4 == 10000000000000000);
         uint256 a5 = exp(1000000000, 8);
-        require(a5 == 1000000000000000000000000000000000000000000000000000000000000000000000000);
+        require(
+            a5 ==
+                1000000000000000000000000000000000000000000000000000000000000000000000000
+        );
         uint256 a6 = exp(2, 24);
         require(a6 == 16777216);
     }
@@ -283,7 +289,7 @@ contract Add {
         return x + y;
     }
 
-    function add_conc() public pure returns (uint256) {
+    function add_conc() public pure {
         uint256 a1 = add(100, 1);
         require(a1 == 101);
         uint256 a2 = add(100, 2);
@@ -402,7 +408,7 @@ contract Sub {
         return x - y;
     }
 
-    function sub_conc() public pure returns (uint256) {
+    function sub_conc() public pure {
         uint256 a1 = sub(100, 1);
         require(a1 == 99);
         uint256 a2 = sub(100, 2);
@@ -573,7 +579,7 @@ contract AssignMath {
 }
 
 contract Mod {
-	function rmod(uint256 x, uint256 y) public pure returns (uint256) {
+    function rmod(uint256 x, uint256 y) public pure returns (uint256) {
         return x % y;
     }
 
@@ -595,29 +601,42 @@ contract Unchecked {
         assembly {
             a := sub(0, 100)
         }
-        require(a == 115792089237316195423570985008687907853269984665640564039457584007913129639836);
+        require(
+            a ==
+                115792089237316195423570985008687907853269984665640564039457584007913129639836
+        );
 
         int256 y = type(int256).min;
         assembly {
             a := sub(y, 100)
         }
-        require(a == 57896044618658097711785492504343953926634992332820282019728792003956564819868);
+        require(
+            a ==
+                57896044618658097711785492504343953926634992332820282019728792003956564819868
+        );
     }
 
     function uncheckedSub(uint256 a) public pure {
         unchecked {
-            a = 0 - 100;
+            uint t = 0;
+            a = t - 100;
         }
-        require(a == 115792089237316195423570985008687907853269984665640564039457584007913129639836);
+        require(
+            a ==
+                115792089237316195423570985008687907853269984665640564039457584007913129639836
+        );
 
         int256 y = type(int256).min;
         unchecked {
-            a = y - 100;
+            a = uint(y) - 100;
         }
-        require(a == 57896044618658097711785492504343953926634992332820282019728792003956564819868);
+        require(
+            a ==
+                57896044618658097711785492504343953926634992332820282019728792003956564819868
+        );
     }
 
-    function uncheckedSymbolicSub(uint256 a, uint256 b) public pure {
+    function uncheckedSymbolicSub(uint256 a) public pure {
         unchecked {
             a -= 100;
         }
@@ -647,7 +666,10 @@ contract Unchecked {
         assembly {
             a := mul(m, m)
         }
-        require(a == 115792089237316195423570985008687907852589419931798687112530834793049593217025);
+        require(
+            a ==
+                115792089237316195423570985008687907852589419931798687112530834793049593217025
+        );
         a /= 3;
         a *= 3;
         // require(a == 115792089237316195423570985008687907852589419931798687112530834793049593217025);
@@ -665,13 +687,14 @@ contract Unchecked {
     function symbUncheckedMul(int256 a, int b) public pure {
         unchecked {
             a = a * b;
-            int c = a * a / a;
-            int d = a * c * b;
+            int c1 = (a * a) / a;
+            int d1 = a * c1 * b;
+            d1;
         }
-
         a = a * b;
-        int c = a * a / a;
+        int c = (a * a) / a;
         int d = a * c * b;
+        d;
     }
 
     function asmSymbUncheckedMul(int256 a, int b) public pure {

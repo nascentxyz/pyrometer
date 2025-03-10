@@ -319,7 +319,6 @@ pub fn exec_div(
 mod tests {
     use super::*;
     use crate::DummyGraph;
-    use solang_parser::pt::Loc;
 
     #[test]
     fn uint_uint() {

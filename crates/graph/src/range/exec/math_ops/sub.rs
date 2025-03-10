@@ -319,8 +319,6 @@ pub fn exec_sub(
 mod tests {
     use super::*;
     use crate::DummyGraph;
-    use ethers_core::types::U256;
-    use solang_parser::pt::Loc;
 
     #[test]
     fn uint_uint() {

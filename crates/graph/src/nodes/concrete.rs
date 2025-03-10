@@ -28,7 +28,7 @@ impl ConcreteNode {
     /// Creates a version of this concrete that is max size
     pub fn max_size(&self, analyzer: &mut impl AnalyzerBackend) -> Result<Self, GraphError> {
         let c = self.underlying(analyzer)?.max_size();
-        Ok(analyzer.add_node(Node::Concrete(c)).into())
+        Ok(analyzer.add_node(c).into())
     }
 
     /// Gets the internal type of the dynamic that backs this. Panics if this is not a dynamic concrete
@@ -102,6 +102,12 @@ pub enum Concrete {
     String(String),
     /// An array of concrete values
     Array(Vec<Concrete>),
+}
+
+impl From<Concrete> for Node {
+    fn from(c: Concrete) -> Node {
+        Node::Concrete(c)
+    }
 }
 
 impl Default for Concrete {
@@ -697,6 +703,43 @@ impl Concrete {
             Concrete::String(_) => Builtin::String,
             _ => panic!("uncastable to builtin"),
         }
+    }
+
+    pub fn alt_lit_builtins(&self) -> Vec<Builtin> {
+        let mut alts = vec![];
+        match self {
+            Concrete::Uint(size, val) => {
+                // literal(u160) -> address
+                if *size == 160 {
+                    alts.push(Builtin::Address);
+                }
+
+                // uint -> int, all size steps between
+                let mut new_size = *size;
+                let imax = U256::from(2).pow((*size - 1).into());
+                // we may have to bump size by 8 bits
+                if val > &imax {
+                    new_size += 8;
+                }
+                // if a valid
+                while new_size <= 256 {
+                    alts.push(Builtin::Int(new_size));
+                    new_size += 8;
+                }
+
+                // exact bytesX
+                let bytes_size = size / 8;
+                alts.push(Builtin::Bytes(bytes_size as u8));
+            }
+            Concrete::String(_) => {
+                alts.push(Builtin::DynamicBytes);
+            }
+            Concrete::Bytes(_, _) => {
+                alts.push(Builtin::DynamicBytes);
+            }
+            _ => {}
+        }
+        alts
     }
 
     /// Converts a concrete into a `U256`.

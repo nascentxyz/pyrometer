@@ -161,21 +161,12 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
         let mut curr = cvar.first_version(self);
 
         let ctx = cvar.ctx(self);
-        let (func_span, func_body_span) =
-            if let Some(fn_call) = ctx.underlying(self).unwrap().fn_call {
+        let underlying = ctx.underlying(self).unwrap();
+        let (func_span, func_body_span) = if let Some(fn_call) = underlying.fn_call() {
+            if underlying.is_ext_fn_call() {
                 (
                     LocStrSpan::new(file_mapping, fn_call.underlying(self).unwrap().loc),
                     fn_call
-                        .underlying(self)
-                        .unwrap()
-                        .body
-                        .as_ref()
-                        .map(|body| LocStrSpan::new(file_mapping, body.loc())),
-                )
-            } else if let Some(ext_fn_call) = ctx.underlying(self).unwrap().ext_fn_call {
-                (
-                    LocStrSpan::new(file_mapping, ext_fn_call.underlying(self).unwrap().loc),
-                    ext_fn_call
                         .underlying(self)
                         .unwrap()
                         .body
@@ -183,7 +174,6 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
                         .map(|body| LocStrSpan::new(file_mapping, body.loc())),
                 )
             } else {
-                let fn_call = ctx.associated_fn(self).unwrap();
                 (
                     LocStrSpan::new(file_mapping, fn_call.underlying(self).unwrap().loc),
                     fn_call
@@ -193,7 +183,19 @@ pub trait VarBoundAnalyzer: Search + AnalyzerBackend + Sized {
                         .as_ref()
                         .map(|body| LocStrSpan::new(file_mapping, body.loc())),
                 )
-            };
+            }
+        } else {
+            let fn_call = ctx.associated_fn(self).unwrap();
+            (
+                LocStrSpan::new(file_mapping, fn_call.underlying(self).unwrap().loc),
+                fn_call
+                    .underlying(self)
+                    .unwrap()
+                    .body
+                    .as_ref()
+                    .map(|body| LocStrSpan::new(file_mapping, body.loc())),
+            )
+        };
 
         let mut ba: VarBoundAnalysis = if let Some(inherited) = inherited {
             let mut new_ba = inherited.clone();

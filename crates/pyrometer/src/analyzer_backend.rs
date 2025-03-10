@@ -9,8 +9,8 @@ use graph::{
     AnalyzerBackend, Edge, GraphBackend, Node, RepresentationInvariant, TypeNode, VarType,
 };
 use shared::{
-    AnalyzerLike, ApplyStats, ExprErr, GraphError, GraphLike, IntoExprErr, NodeIdx, RangeArena,
-    RepresentationErr,
+    AnalyzerLike, ApplyStats, ExprErr, FlatExpr, GraphError, GraphLike, IntoExprErr, NodeIdx,
+    RangeArena, RepresentationErr,
 };
 
 use ahash::AHashMap;
@@ -30,9 +30,9 @@ impl AnalyzerBackend for Analyzer {
         concrete: Concrete,
         loc: Loc,
     ) -> Result<graph::nodes::ContextVarNode, Self::ExprErr> {
-        let cnode = self.add_node(Node::Concrete(concrete));
+        let cnode = self.add_node(concrete);
         let var = ContextVar::new_from_concrete(loc, ctx, cnode.into(), self);
-        let cnode = self.add_node(Node::ContextVar(var.into_expr_err(loc)?));
+        let cnode = self.add_node(var.into_expr_err(loc)?);
         Ok(cnode.into())
     }
 }
@@ -82,14 +82,6 @@ impl AnalyzerLike for Analyzer {
         needed_functions.sort_by(|a, b| a.0.cmp(&b.0));
         needed_functions.dedup();
 
-        println!(
-            "needed functions: {:#?}",
-            needed_functions
-                .iter()
-                .map(|i| i.name(self).unwrap())
-                .collect::<Vec<_>>()
-        );
-
         fn recurse_find(
             contract: ContractNode,
             target_contract: ContractNode,
@@ -123,7 +115,6 @@ impl AnalyzerLike for Analyzer {
         let mut structs = vec![];
         let mut errs = vec![];
         needed_functions.into_iter().for_each(|func| {
-            println!("iterating with func: {}", func.name(self).unwrap());
             let maybe_func_contract = func.maybe_associated_contract(self);
             let reqs = func.reconstruction_requirements(self);
             reqs.usertypes.iter().for_each(|var| {
@@ -173,8 +164,6 @@ impl AnalyzerLike for Analyzer {
             let entry = contract_to_funcs.entry(maybe_func_contract).or_default();
             entry.push((func, reqs));
         });
-
-        // println!("{:#?}", contract_to_funcs);
 
         let contracts = contract_to_funcs.keys().collect::<Vec<_>>();
         let contract_str = contracts
@@ -243,9 +232,7 @@ impl AnalyzerLike for Analyzer {
 
     fn add_expr_err(&mut self, err: ExprErr) {
         if self.debug_panic() {
-            println!("here1");
             if let Some(path) = self.minimize_debug().clone() {
-                println!("here2");
                 let reconstruction_edge: ContextNode = self
                     .graph
                     .node_indices()
@@ -253,8 +240,6 @@ impl AnalyzerLike for Analyzer {
                         Node::Context(context) if context.killed.is_some() => {
                             match context.killed.unwrap() {
                                 (_, KilledKind::ParseError) => {
-                                    println!("here3");
-                                    // println!("found context: {}", context.path);
                                     let edges = graph::nodes::ContextNode::from(node)
                                         .all_edges(self)
                                         .unwrap();
@@ -267,17 +252,14 @@ impl AnalyzerLike for Analyzer {
 
                                     Some(reconstruction_edge)
                                 }
-                                e => None,
+                                _e => None,
                             }
                         }
                         _ => None,
                     })
                     .unwrap();
-                println!("here5");
 
                 let min_str = self.minimize_err(reconstruction_edge);
-                println!("here6: {min_str}");
-                // println!("reconstructed source:\n{} placed in {}", min_str, path);
 
                 let mut file = std::fs::OpenOptions::new()
                     .write(true)
@@ -361,7 +343,6 @@ impl AnalyzerLike for Analyzer {
                 }
             }
             Variable(ident) => {
-                // println!("variable ident: {}", ident.name);
                 if let Some(idxs) = self.user_types.get(&ident.name) {
                     if idxs.len() == 1 {
                         idxs[0]
@@ -436,7 +417,7 @@ impl AnalyzerLike for Analyzer {
                     int
                 };
 
-                self.add_node(Node::Concrete(Concrete::Uint(256, val)))
+                self.add_node(Concrete::Uint(256, val))
             }
             _ => {
                 if let Some(idx) = self.complicated_parse(arena, expr, parent) {
@@ -484,6 +465,11 @@ impl AnalyzerLike for Analyzer {
             });
 
             self.add_edge(func_node, self.entry(), Edge::Func);
+
+            let underlying_mut = FunctionNode::from(func_node).underlying_mut(self).unwrap();
+            let name = underlying_mut.name.as_mut().unwrap();
+            let full_name = format!("{}({})", name, params_strs.join(", "));
+            name.name.clone_from(&full_name);
 
             self.builtin_fn_nodes_mut()
                 .insert(builtin_name.to_string(), func_node);
@@ -555,5 +541,34 @@ impl AnalyzerLike for Analyzer {
             }
         }
         Ok(res)
+    }
+
+    type FlatExpr = FlatExpr;
+
+    fn push_expr(&mut self, flat: FlatExpr) {
+        self.flattened.push(flat);
+    }
+
+    fn decrement_asm_block(&mut self) {
+        self.current_asm_block -= 1;
+    }
+    fn increment_asm_block(&mut self) {
+        self.current_asm_block += 1;
+    }
+
+    fn current_asm_block(&self) -> usize {
+        self.current_asm_block
+    }
+
+    fn expr_stack(&self) -> &[FlatExpr] {
+        &self.flattened
+    }
+
+    fn expr_stack_mut(&mut self) -> &mut Vec<FlatExpr> {
+        &mut self.flattened
+    }
+
+    fn debug_stack(&self) -> bool {
+        self.debug_stack
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    nodes::{ContextNode, FunctionNode},
+    nodes::{context::underlying::SubContextKind, ContextNode, FunctionNode, KilledKind},
     AnalyzerBackend, GraphBackend,
 };
 use shared::GraphError;
@@ -9,11 +9,30 @@ impl ContextNode {
     pub fn is_anonymous_fn_call(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         let underlying = self.underlying(analyzer)?;
 
-        Ok(underlying.fn_call.is_none() && underlying.ext_fn_call.is_none() && !underlying.is_fork)
+        Ok(matches!(
+            underlying.subctx_kind,
+            Some(SubContextKind::Loop { .. })
+        ))
+    }
+
+    pub fn increment_parse_idx(&self, analyzer: &mut impl AnalyzerBackend) -> usize {
+        let underlying_mut = self.underlying_mut(analyzer).unwrap();
+        let curr = underlying_mut.parse_idx;
+        underlying_mut.parse_idx += 1;
+        curr
+    }
+
+    pub fn skip_n_exprs(&self, n: usize, analyzer: &mut impl AnalyzerBackend) {
+        let underlying_mut = self.underlying_mut(analyzer).unwrap();
+        underlying_mut.parse_idx += n;
+    }
+
+    pub fn parse_idx(&self, analyzer: &impl GraphBackend) -> usize {
+        self.underlying(analyzer).unwrap().parse_idx
     }
 
     pub fn has_continuation(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.underlying(analyzer)?.continuation_of.is_some())
+        Ok(self.underlying(analyzer)?.continuation_of().is_some())
     }
 
     /// Returns whether this context is killed or returned
@@ -23,9 +42,17 @@ impl ContextNode {
             || (!underlying.ret.is_empty() && underlying.modifier_state.is_none()))
     }
 
-    /// Returns whether the context is killed
+    /// Returns whether the context is returned
     pub fn is_returned(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
         Ok(!self.underlying(analyzer)?.ret.is_empty())
+    }
+
+    /// Returns whether the context is reverted
+    pub fn is_graceful_ended(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
+        Ok(matches!(
+            self.underlying(analyzer)?.killed,
+            Some((_, KilledKind::Ended))
+        ))
     }
 
     /// Returns whether the context is killed
@@ -41,7 +68,7 @@ impl ContextNode {
 
     /// Check if this context is in an external function call
     pub fn is_ext_fn(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.underlying(analyzer)?.ext_fn_call.is_some())
+        Ok(self.underlying(analyzer)?.is_ext_fn_call())
     }
 
     /// Checks whether a function is external to the current context
@@ -62,28 +89,12 @@ impl ContextNode {
                             .underlying(analyzer)?
                             .inherits
                             .iter()
+                            .filter_map(|i| i.as_ref())
                             .any(|inherited| *inherited == fn_ctrt))
                 } else {
                     Ok(false)
                 }
             }
         }
-    }
-
-    /// Returns whether this context *currently* uses unchecked math
-    pub fn unchecked(&self, analyzer: &impl GraphBackend) -> Result<bool, GraphError> {
-        Ok(self.underlying(analyzer)?.unchecked)
-    }
-
-    /// Sets the context to use unchecked math
-    pub fn set_unchecked(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
-        self.underlying_mut(analyzer)?.unchecked = true;
-        Ok(())
-    }
-
-    /// Sets the context to use checked math
-    pub fn unset_unchecked(&self, analyzer: &mut impl AnalyzerBackend) -> Result<(), GraphError> {
-        self.underlying_mut(analyzer)?.unchecked = false;
-        Ok(())
     }
 }

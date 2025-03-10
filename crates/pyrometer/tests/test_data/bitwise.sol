@@ -1,9 +1,12 @@
+// SPDX-License-Identifier: MIT or APACHE2
+pragma solidity ^0.8.0;
+
 contract BitAnd {
-    function bit_and(bytes32 x, bytes32 y) public returns (bytes32) {
+    function bit_and(bytes32 x, bytes32 y) public pure returns (bytes32) {
         return x & y;
     }
 
-    function bit_and_conc(bytes32 d) public {
+    function bit_and_conc1() public pure {
         require(uint(bytes32(type(uint256).max) & bytes32(uint(100))) == 100);
         require(uint(bytes32(0) & bytes32(uint(100))) == 0);
         require(uint(bytes32(uint(101)) & bytes32(uint(105))) == 97);
@@ -13,11 +16,11 @@ contract BitAnd {
         require(uint(bit_and(bytes32(uint(50)), bytes32(uint(500)))) == 48);
     }
 
-    function bit_and(uint256 x, uint256 y) public returns (uint256) {
+    function bit_and(uint256 x, uint256 y) public pure returns (uint256) {
         return x & y;
     }
 
-    function bit_and_conc(uint256 d) public {
+    function bit_and_conc() public pure {
         require(type(uint256).max & 100 == 100);
         require(0 & uint(100) == 0);
         require(101 & 105 == 97);
@@ -25,11 +28,11 @@ contract BitAnd {
         require(bit_and(50, 500) == 48);
     }
 
-    function int_bit_and(int256 x, int256 y) public returns (int256) {
+    function int_bit_and(int256 x, int256 y) public pure returns (int256) {
         return x & y;
     }
 
-    function int_bit_and_conc(uint256 d) public {
+    function int_bit_and_conc() public pure {
         require(type(int256).max & int(100) == 100);
         require(0 & int(100) == 0);
         require(101 & 105 == 97);
@@ -39,11 +42,11 @@ contract BitAnd {
 }
 
 contract BitOr {
-    function bit_or(bytes32 x, bytes32 y) public returns (bytes32) {
+    function bit_or(bytes32 x, bytes32 y) public pure returns (bytes32) {
         return x | y;
     }
 
-    function bit_or_conc(bytes32 d) public {
+    function bit_or_conc1() public pure {
         require(
             bytes32(type(uint256).max) | bytes32(uint(100)) ==
                 bytes32(type(uint256).max)
@@ -57,11 +60,11 @@ contract BitOr {
         require(uint(bit_or(bytes32(uint(50)), bytes32(uint(500)))) == 502);
     }
 
-    function bit_or(uint256 x, uint256 y) public returns (uint256) {
+    function bit_or(uint256 x, uint256 y) public pure returns (uint256) {
         return x | y;
     }
 
-    function bit_or_conc(uint256 d) public {
+    function bit_or_conc() public pure {
         require(type(uint256).max | uint(100) == type(uint256).max);
         require(0 | uint(100) == 100);
         require(101 | 105 == 109);
@@ -69,11 +72,11 @@ contract BitOr {
         require(bit_or(50, 500) == 502);
     }
 
-    function int_bit_or(int256 x, int256 y) public returns (int256) {
+    function int_bit_or(int256 x, int256 y) public pure returns (int256) {
         return x | y;
     }
 
-    function int_bit_or_conc(uint256 d) public {
+    function int_bit_or_conc() public pure {
         require(type(int256).max | int(100) == type(int256).max);
         require(0 | int(100) == 100);
         require(101 | 105 == 109);
@@ -83,11 +86,11 @@ contract BitOr {
 }
 
 contract BitXor {
-    function bit_xor(uint256 x, uint256 y) public returns (uint256) {
+    function bit_xor(uint256 x, uint256 y) public pure returns (uint256) {
         return x ^ y;
     }
 
-    function bit_xor_conc(uint256 d) public {
+    function bit_xor_conc() public pure {
         require(
             type(uint256).max ^ uint(100) ==
                 115792089237316195423570985008687907853269984665640564039457584007913129639835
@@ -98,11 +101,11 @@ contract BitXor {
         require(bit_xor(50, 500) == 454);
     }
 
-    function int_bit_xor(int256 x, int256 y) public returns (int256) {
+    function int_bit_xor(int256 x, int256 y) public pure returns (int256) {
         return x ^ y;
     }
 
-    function int_bit_xor_conc(uint256 d) public {
+    function int_bit_xor_conc() public pure {
         require(
             type(int256).max ^ int(100) ==
                 57896044618658097711785492504343953926634992332820282019728792003956564819867
@@ -117,7 +120,7 @@ contract BitXor {
 }
 
 contract BitNot {
-    function yul_bit_not(bytes32 d) public view returns (bytes32) {
+    function yul_bit_not() public pure {
         uint256 x;
         assembly {
             x := not(100)
@@ -128,7 +131,7 @@ contract BitNot {
         );
     }
 
-    function bit_not(bytes32 d) public view returns (bytes32) {
+    function bit_not() public pure returns (bytes32) {
         bytes32 x = hex"1111";
         require(
             ~x ==
@@ -153,11 +156,11 @@ contract BitNot {
         return ~x;
     }
 
-    function bit_not(uint256 x) public returns (uint256) {
+    function bit_not(uint256 x) public pure returns (uint256) {
         return ~x;
     }
 
-    function bit_not_conc(uint256 d) public {
+    function bit_not_conc() public pure {
         require(~type(uint256).max == 0);
         require(
             ~uint(100) ==
@@ -178,11 +181,11 @@ contract BitNot {
         );
     }
 
-    function int_bit_not(int256 x) public returns (int256) {
+    function int_bit_not(int256 x) public pure returns (int256) {
         return ~x;
     }
 
-    function int_bit_not_conc(uint256 d) public returns (int256) {
+    function int_bit_not_conc() public pure {
         require(~type(int256).max == type(int256).min);
         require(~type(int256).min == type(int256).max);
         require(~int256(100) == -101);
@@ -194,7 +197,7 @@ contract BitNot {
 }
 
 contract BitShl {
-    function yulShl(uint256 x, uint256 y) public returns (uint256) {
+    function yulShl(uint256 x, uint256 y) public pure returns (uint256) {
         uint256 ret;
         assembly {
             ret := shl(y, x)
@@ -202,13 +205,13 @@ contract BitShl {
         return ret;
     }
 
-    function yulShl_conc() public {
+    function yulShl_conc() public pure {
         uint256 ret = yulShl(10, 1);
         uint256 other_ret = 10 << 1;
         require(ret == other_ret);
     }
 
-    function yulShr(uint256 x, uint256 y) public returns (uint256) {
+    function yulShr(uint256 x, uint256 y) public pure returns (uint256) {
         uint256 ret;
         assembly {
             ret := shr(x, y)
@@ -216,15 +219,15 @@ contract BitShl {
         return ret;
     }
 
-    function shl(uint256 x, uint256 y) public returns (uint256) {
+    function shl(uint256 x, uint256 y) public pure returns (uint256) {
         return x << y;
     }
 
-    function int_shl(int256 x, uint256 y) public returns (int256) {
+    function int_shl(int256 x, uint256 y) public pure returns (int256) {
         return x << y;
     }
 
-    function shl_conc() public returns (uint256) {
+    function shl_conc() public pure {
         uint256 a1 = shl(100, 1);
         require(a1 == 200);
         uint256 a2 = shl(100, 2);
@@ -253,7 +256,7 @@ contract BitShl {
         );
     }
 
-    function int_shl_conc() public returns (int256) {
+    function int_shl_conc() public pure {
         int256 a1 = int_shl(100, 1);
         "pyro:variable:a1:range:[200,200]";
         int256 a2 = int_shl(100, 2);
@@ -313,15 +316,15 @@ contract BitShl {
 }
 
 contract BitShr {
-    function shr(uint256 x, uint256 y) public returns (uint256) {
+    function shr(uint256 x, uint256 y) public pure returns (uint256) {
         return x >> y;
     }
 
-    function int_shr(int256 x, uint256 y) public returns (int256) {
+    function int_shr(int256 x, uint256 y) public pure returns (int256) {
         return x >> y;
     }
 
-    function shr_conc() public {
+    function shr_conc() public pure {
         uint256 a1 = shr(100, 1);
         require(a1 == 50);
         uint256 a2 = shr(100, 2);
@@ -347,7 +350,7 @@ contract BitShr {
         require(a10 == 2);
     }
 
-    function int_shr_conc() public returns (int256) {
+    function int_shr_conc() public pure {
         int256 a1 = int_shr(100, 1);
         require(a1 == 50);
         int256 a2 = int_shr(100, 2);

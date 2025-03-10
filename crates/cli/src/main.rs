@@ -110,6 +110,9 @@ struct Args {
 
     #[clap(long)]
     pub minimize_debug: Option<String>,
+
+    #[clap(long, default_value = "false")]
+    pub debug_stack: bool,
 }
 
 pub fn subscriber() {
@@ -243,6 +246,7 @@ fn main() {
         root: Root::RemappingsDirectory(env::current_dir().unwrap()),
         debug_panic: args.debug_panic || args.minimize_debug.is_some(),
         minimize_debug: args.minimize_debug,
+        debug_stack: args.debug_stack,
         ..Default::default()
     };
 
@@ -300,7 +304,6 @@ fn main() {
 
     println!("DONE ANALYZING IN: {parse_time}ms. Writing to cli...");
 
-    // println!("Arena: {:#?}", analyzer.range_arena);
     if unsafe { USE_DEBUG_SITE } {
         use pyrometer::graph_backend::mermaid_str;
         use pyrometer::graph_backend::post_to_site_arena;
@@ -324,7 +327,6 @@ fn main() {
     if args.stats {
         println!("{}", analyzer.stats(t_end, arena));
     }
-    // println!("Arena: {:#?}", analyzer.range_arena);
 
     // use self.sources to fill a BTreeMap with the file_no and SourcePath.path_to_solidity_file
     let mut file_mapping: BTreeMap<usize, String> = BTreeMap::new();
@@ -366,20 +368,10 @@ fn main() {
         analyzer.open_mermaid(arena);
     }
 
-    // println!("{}", analyzer.range_arena.ranges.iter().map(|i| {
-    //     let j = i.borrow();
-    //     let (min_cached, max_cached) = j.is_min_max_cached(&analyzer);
-    //     format!("\t{j}, is cached: {min_cached}, {max_cached}\n")
-    // }).collect::<Vec<_>>().join(""));
-    // println!("{}", analyzer.range_arena.map.iter().map(|(k, v)| {
-    //     format!("\t{}: {}\n", k, v)
-    // }).collect::<Vec<_>>().join(""));
-
     if args.debug {
         return;
     }
 
-    // println!("getting contracts");
     let all_contracts = analyzer
         .search_children(entry, &Edge::Contract)
         .into_iter()
@@ -431,7 +423,10 @@ fn main() {
     // } else {
     let _t1 = std::time::Instant::now();
     if args.contracts.is_empty() {
-        let funcs = analyzer.search_children(entry, &Edge::Func);
+        let mut funcs = analyzer.search_children(entry, &Edge::Func);
+        funcs.extend(analyzer.search_children(entry, &Edge::FallbackFunc));
+        funcs.extend(analyzer.search_children(entry, &Edge::Constructor));
+        funcs.extend(analyzer.search_children(entry, &Edge::ReceiveFunc));
         for func in funcs.into_iter() {
             if !args.funcs.is_empty() {
                 if args.funcs.iter().any(|analyze_for| {

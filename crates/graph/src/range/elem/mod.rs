@@ -11,6 +11,9 @@ pub use elem_trait::*;
 pub use expr::*;
 pub use map_or_array::*;
 pub use reference::*;
+use shared::FlatExpr;
+
+use std::fmt;
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum MinMaxed<T> {
@@ -63,8 +66,6 @@ pub enum RangeOp {
     Eq,
     /// Not Equal
     Neq,
-    /// Logical Not
-    Not,
     /// Bitwise shift left
     Shl,
     /// Bitwise shift right
@@ -84,7 +85,7 @@ pub enum RangeOp {
     /// Bitwise Not
     BitNot,
     /// Exponentiation
-    Exp,
+    Exp(bool),
     /// Concatenation
     Concat,
     /// Memcopy
@@ -97,6 +98,41 @@ pub enum RangeOp {
     SetLength,
     /// Get Length of a memory object
     GetLength,
+    /// Slice a memory object
+    Slice,
+}
+
+impl TryFrom<FlatExpr> for RangeOp {
+    type Error = ();
+    fn try_from(flat: FlatExpr) -> Result<Self, ()> {
+        use FlatExpr::*;
+        let res = match flat {
+            Power(_, unchecked) => RangeOp::Exp(unchecked),
+            Multiply(_, unchecked) => RangeOp::Mul(unchecked),
+            Add(_, unchecked) => RangeOp::Add(unchecked),
+            Subtract(_, unchecked) => RangeOp::Sub(unchecked),
+            Divide(_, unchecked) => RangeOp::Div(unchecked),
+            Modulo(_) => RangeOp::Mod,
+            AssignMultiply(_, unchecked) => RangeOp::Mul(unchecked),
+            AssignAdd(_, unchecked) => RangeOp::Add(unchecked),
+            AssignSubtract(_, unchecked) => RangeOp::Sub(unchecked),
+            AssignDivide(_, unchecked) => RangeOp::Div(unchecked),
+            AssignModulo(_) => RangeOp::Mod,
+            ShiftLeft(_) => RangeOp::Shl,
+            ShiftRight(_) => RangeOp::Shr,
+            AssignShiftLeft(_) => RangeOp::Shl,
+            AssignShiftRight(_) => RangeOp::Shr,
+            BitwiseAnd(_) => RangeOp::BitAnd,
+            AssignAnd(_) => RangeOp::BitAnd,
+            BitwiseXor(_) => RangeOp::BitXor,
+            AssignXor(_) => RangeOp::BitXor,
+            BitwiseOr(_) => RangeOp::BitOr,
+            AssignOr(_) => RangeOp::BitOr,
+            BitwiseNot(_) => RangeOp::BitNot,
+            _ => return Err(()),
+        };
+        Ok(res)
+    }
 }
 
 impl RangeOp {
@@ -108,7 +144,7 @@ impl RangeOp {
             Sub(_i) => false,
             Div(_i) => false,
             Mod => false,
-            Exp => false,
+            Exp(_i) => false,
             Min => true,
             Max => true,
 
@@ -120,7 +156,6 @@ impl RangeOp {
             Gte => false,
             And => true,
             Or => true,
-            Not => false,
 
             BitNot => false,
             BitAnd => false,
@@ -137,6 +172,7 @@ impl RangeOp {
             SetIndices => false,
             GetIndex => false,
             Concat => false,
+            Slice => false,
         }
     }
 
@@ -200,42 +236,59 @@ impl RangeOp {
         };
         Some(t)
     }
+
+    pub fn require_rhs(self) -> Option<Self> {
+        use RangeOp::*;
+        let t = match self {
+            Eq => Eq,
+            Neq => Neq,
+            Lte => Gte,
+            Gte => Lte,
+            Gt => Lt,
+            Lt => Gt,
+            other => {
+                tracing::trace!("Require rhs other: {other:?}");
+                return None;
+            }
+        };
+        Some(t)
+    }
 }
 
-impl ToString for RangeOp {
-    fn to_string(&self) -> String {
+impl fmt::Display for RangeOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         use RangeOp::*;
         match self {
-            Add(..) => "+".to_string(),
-            Mul(..) => "*".to_string(),
-            Sub(..) => "-".to_string(),
-            Div(..) => "/".to_string(),
-            Shl => "<<".to_string(),
-            Shr => ">>".to_string(),
-            Mod => "%".to_string(),
-            Exp => "**".to_string(),
-            Min => "min".to_string(),
-            Max => "max".to_string(),
-            Lt => "<".to_string(),
-            Gt => ">".to_string(),
-            Lte => "<=".to_string(),
-            Gte => ">=".to_string(),
-            Eq => "==".to_string(),
-            Neq => "!=".to_string(),
-            Not => "!".to_string(),
-            And => "&&".to_string(),
-            Or => "||".to_string(),
-            Cast => "cast".to_string(),
-            BitAnd => "&".to_string(),
-            BitOr => "|".to_string(),
-            BitXor => "^".to_string(),
-            BitNot => "~".to_string(),
-            Concat => "concat".to_string(),
-            Memcopy => "memcopy".to_string(),
-            SetIndices => "set_indices".to_string(),
-            GetIndex => "get_index".to_string(),
-            GetLength => "get_length".to_string(),
-            SetLength => "set_length".to_string(),
+            Add(..) => write!(f, "+"),
+            Mul(..) => write!(f, "*"),
+            Sub(..) => write!(f, "-"),
+            Div(..) => write!(f, "/"),
+            Shl => write!(f, "<<"),
+            Shr => write!(f, ">>"),
+            Mod => write!(f, "%"),
+            Exp(_) => write!(f, "**"),
+            Min => write!(f, "min"),
+            Max => write!(f, "max"),
+            Lt => write!(f, "<"),
+            Gt => write!(f, ">"),
+            Lte => write!(f, "<="),
+            Gte => write!(f, ">="),
+            Eq => write!(f, "=="),
+            Neq => write!(f, "!="),
+            And => write!(f, "&&"),
+            Or => write!(f, "||"),
+            Cast => write!(f, "cast"),
+            BitAnd => write!(f, "&"),
+            BitOr => write!(f, "|"),
+            BitXor => write!(f, "^"),
+            BitNot => write!(f, "~"),
+            Concat => write!(f, "concat"),
+            Memcopy => write!(f, "memcopy"),
+            SetIndices => write!(f, "set_indices"),
+            GetIndex => write!(f, "get_index"),
+            GetLength => write!(f, "get_length"),
+            SetLength => write!(f, "set_length"),
+            Slice => write!(f, "slice"),
         }
     }
 }

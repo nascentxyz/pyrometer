@@ -1,5 +1,3 @@
-use crate::ExpressionParser;
-
 use graph::{
     elem::{Elem, RangeElem},
     nodes::{Concrete, ContextNode},
@@ -10,20 +8,18 @@ use shared::{ExprErr, IntoExprErr, RangeArena};
 use solang_parser::pt::{Expression, Loc};
 
 impl<T> TestCommandRunner for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
 }
 
 /// Solidity statement parser
-pub trait TestCommandRunner:
-    AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + ExpressionParser
-{
+pub trait TestCommandRunner: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {
     fn run_test_command(
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: Loc,
         test_command: TestCommand,
+        loc: Loc,
     ) -> Option<()> {
         match test_command {
             TestCommand::Variable(var_name, VariableCommand::RangeAssert { min, max }) => {
@@ -75,7 +71,7 @@ pub trait TestCommandRunner:
                 }
             }
             TestCommand::Coverage(CoverageCommand::OnlyPath) => {
-                if let Some(parent) = ctx.underlying(self).unwrap().parent_ctx {
+                if let Some(parent) = ctx.underlying(self).unwrap().parent_ctx() {
                     if parent.underlying(self).unwrap().child.is_some() {
                         self.add_expr_err(ExprErr::TestError(
                             loc,

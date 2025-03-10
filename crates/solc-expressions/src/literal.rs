@@ -6,7 +6,7 @@ use graph::{
 use shared::{ExprErr, IntoExprErr, RangeArena};
 
 use ethers_core::types::{Address, H256, I256, U256};
-use solang_parser::pt::{HexLiteral, Identifier, Loc};
+use solang_parser::pt::Loc;
 
 use std::str::FromStr;
 
@@ -20,7 +20,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         exponent: &str,
         negative: bool,
-        unit: &Option<Identifier>,
+        unit: Option<&str>,
     ) -> Result<Concrete, ExprErr> {
         let Ok(int) = U256::from_dec_str(integer) else {
             return Err(ExprErr::ParseError(
@@ -69,10 +69,10 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         exponent: &str,
         negative: bool,
-        unit: &Option<Identifier>,
+        unit: Option<&str>,
     ) -> Result<(), ExprErr> {
         let conc = self.concrete_number_from_str(loc, integer, exponent, negative, unit)?;
-        let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(conc)));
+        let concrete_node = ConcreteNode::from(self.add_node(conc));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
@@ -84,8 +84,8 @@ pub trait Literal: AnalyzerBackend + Sized {
         Ok(())
     }
 
-    fn unit_to_uint(&self, unit: &Identifier) -> U256 {
-        match &*unit.name {
+    fn unit_to_uint(&self, unit: &str) -> U256 {
+        match unit {
             "gwei" => U256::from(10).pow(9.into()),
             "ether" => U256::from(10).pow(18.into()),
             "minutes" => U256::from(60),
@@ -105,7 +105,7 @@ pub trait Literal: AnalyzerBackend + Sized {
         integer: &str,
         fraction: &str,
         exponent: &str,
-        unit: &Option<Identifier>,
+        unit: Option<&str>,
         negative: bool,
     ) -> Result<(), ExprErr> {
         let int =
@@ -167,7 +167,7 @@ pub trait Literal: AnalyzerBackend + Sized {
                 .val
                 .fit_size();
 
-            ConcreteNode::from(self.add_node(Node::Concrete(evaled)))
+            ConcreteNode::from(self.add_node(evaled))
         } else {
             let evaled = rational_range
                 .maximize(self, arena)
@@ -176,7 +176,7 @@ pub trait Literal: AnalyzerBackend + Sized {
                 .unwrap()
                 .val
                 .fit_size();
-            ConcreteNode::from(self.add_node(Node::Concrete(evaled)))
+            ConcreteNode::from(self.add_node(evaled))
         };
 
         let ccvar = Node::ContextVar(
@@ -212,9 +212,9 @@ pub trait Literal: AnalyzerBackend + Sized {
                 ));
             }
             let val = I256::from(-1i32) * raw;
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Int(size, val))))
+            ConcreteNode::from(self.add_node(Concrete::Int(size, val)))
         } else {
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Uint(size, val))))
+            ConcreteNode::from(self.add_node(Concrete::Uint(size, val)))
         };
 
         let ccvar = Node::ContextVar(
@@ -229,28 +229,24 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 
     /// hex"123123"
-    fn hex_literals(&mut self, ctx: ContextNode, hexes: &[HexLiteral]) -> Result<(), ExprErr> {
+    fn hex_literals(&mut self, ctx: ContextNode, loc: Loc, hex: &str) -> Result<(), ExprErr> {
         let mut h = vec![];
-        hexes.iter().for_each(|sub_hex| {
-            if let Ok(hex_val) = hex::decode(&sub_hex.hex) {
-                h.extend(hex_val)
-            }
-        });
-
-        let mut loc = hexes[0].loc;
-        loc.use_end_from(&hexes[hexes.len() - 1].loc);
+        if let Ok(hex_val) = hex::decode(hex) {
+            h.extend(hex_val)
+        }
 
         let concrete_node = if h.len() <= 32 {
             let mut target = H256::default();
-            let mut max = 1;
+            let mut max = 0;
             h.iter().enumerate().for_each(|(i, hex_byte)| {
                 if *hex_byte != 0x00u8 {
                     max = i as u8 + 1;
                 }
                 target.0[i] = *hex_byte;
             });
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bytes(max, target))))
+            ConcreteNode::from(self.add_node(Concrete::Bytes(max, target)))
         } else {
+            // hex""
             ConcreteNode::from(self.add_node(Node::Concrete(Concrete::DynBytes(h))))
         };
 
@@ -268,8 +264,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     fn address_literal(&mut self, ctx: ContextNode, loc: Loc, addr: &str) -> Result<(), ExprErr> {
         let addr = Address::from_str(addr).map_err(|e| ExprErr::ParseError(loc, e.to_string()))?;
 
-        let concrete_node =
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Address(addr))));
+        let concrete_node = ConcreteNode::from(self.add_node(Concrete::Address(addr)));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
@@ -292,6 +287,10 @@ pub trait Literal: AnalyzerBackend + Sized {
                             let range = split
                                 .get(4)
                                 .copied()?
+                                .chars()
+                                .filter(|c| !c.is_whitespace())
+                                .collect::<String>();
+                            let range = range
                                 .trim_start_matches('[')
                                 .trim_end_matches(']')
                                 .split(',')
@@ -311,22 +310,10 @@ pub trait Literal: AnalyzerBackend + Sized {
                             }
 
                             let min = self
-                                .concrete_number_from_str(
-                                    Loc::Implicit,
-                                    min_str,
-                                    "",
-                                    min_neg,
-                                    &None,
-                                )
+                                .concrete_number_from_str(Loc::Implicit, min_str, "", min_neg, None)
                                 .ok()?;
                             let max = self
-                                .concrete_number_from_str(
-                                    Loc::Implicit,
-                                    max_str,
-                                    "",
-                                    max_neg,
-                                    &None,
-                                )
+                                .concrete_number_from_str(Loc::Implicit, max_str, "", max_neg, None)
                                 .ok()?;
 
                             Some(TestCommand::Variable(
@@ -358,8 +345,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 
     fn string_literal(&mut self, ctx: ContextNode, loc: Loc, s: &str) -> Result<(), ExprErr> {
-        let concrete_node =
-            ConcreteNode::from(self.add_node(Node::Concrete(Concrete::String(s.to_string()))));
+        let concrete_node = ConcreteNode::from(self.add_node(Concrete::String(s.to_string())));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
@@ -372,7 +358,7 @@ pub trait Literal: AnalyzerBackend + Sized {
     }
 
     fn bool_literal(&mut self, ctx: ContextNode, loc: Loc, b: bool) -> Result<(), ExprErr> {
-        let concrete_node = ConcreteNode::from(self.add_node(Node::Concrete(Concrete::Bool(b))));
+        let concrete_node = ConcreteNode::from(self.add_node(Concrete::Bool(b)));
         let ccvar = Node::ContextVar(
             ContextVar::new_from_concrete(loc, ctx, concrete_node, self).into_expr_err(loc)?,
         );
@@ -393,7 +379,7 @@ mod tests {
     use graph::nodes::Context;
     use graph::nodes::Function;
     use pyrometer::Analyzer;
-    use solang_parser::pt::Loc;
+    use solang_parser::pt::HexLiteral;
 
     fn make_context_node_for_analyzer(analyzer: &mut Analyzer) -> ContextNode {
         // need to make a function, then provide the function to the new Context
@@ -410,7 +396,7 @@ mod tests {
         num_literal: &str,
         exponent: &str,
         negative: bool,
-        unit: Option<Identifier>,
+        unit: Option<&str>,
         expected: Concrete,
     ) -> Result<()> {
         // setup
@@ -424,7 +410,7 @@ mod tests {
         let loc = Loc::File(0, 0, 0);
 
         // create a number literal
-        analyzer.number_literal(ctx, loc, num_literal, exponent, negative, &unit)?;
+        analyzer.number_literal(ctx, loc, num_literal, exponent, negative, unit)?;
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
@@ -498,10 +484,7 @@ mod tests {
     fn test_number_literal_positive_with_zero_exponent_and_unit() -> Result<()> {
         let num_literal = "123";
         let exponent = "0";
-        let unit = Some(Identifier {
-            name: "ether".into(),
-            loc: Loc::File(0, 0, 0),
-        });
+        let unit = Some("ether");
         let expected = Concrete::Uint(72, U256::from_dec_str("123000000000000000000").unwrap());
         test_number_literal(num_literal, exponent, false, unit, expected)
     }
@@ -510,10 +493,7 @@ mod tests {
     fn test_number_literal_positive_with_unit() -> Result<()> {
         let num_literal = "123";
         let exponent = "";
-        let unit = Some(Identifier {
-            name: "ether".into(),
-            loc: Loc::File(0, 0, 0),
-        });
+        let unit = Some("ether");
         let expected = Concrete::Uint(72, U256::from_dec_str("123000000000000000000").unwrap());
         test_number_literal(num_literal, exponent, false, unit, expected)
     }
@@ -561,7 +541,7 @@ mod tests {
         fraction: &str,
         exponent: &str,
         negative: bool,
-        unit: Option<Identifier>,
+        unit: Option<&str>,
         expected: Concrete,
     ) -> Result<()> {
         // setup
@@ -576,7 +556,7 @@ mod tests {
 
         // create a rational number literal
         analyzer.rational_number_literal(
-            arena, ctx, loc, integer, fraction, exponent, &unit, negative,
+            arena, ctx, loc, integer, fraction, exponent, unit, negative,
         )?;
 
         // checks
@@ -645,10 +625,7 @@ mod tests {
         let integer = "1";
         let fraction = "5";
         let exponent = "0";
-        let unit = Some(Identifier {
-            name: "ether".into(),
-            loc: Loc::File(0, 0, 0),
-        });
+        let unit = Some("ether");
         let expected = Concrete::Uint(64, U256::from_dec_str("1500000000000000000").unwrap());
         test_rational_number_literal(integer, fraction, exponent, false, unit, expected)
     }
@@ -806,8 +783,15 @@ mod tests {
         let arena = &mut arena_base;
         let ctx = make_context_node_for_analyzer(&mut analyzer);
 
+        let mut final_str = "".to_string();
+        let mut loc = hex_literals[0].loc;
+        hex_literals.iter().for_each(|s| {
+            loc.use_end_from(&s.loc);
+            final_str.push_str(&s.hex);
+        });
+
         // create hex literals
-        analyzer.hex_literals(ctx, hex_literals)?;
+        analyzer.hex_literals(ctx, loc, &final_str)?;
 
         // checks
         let stack = &ctx.underlying(&analyzer)?.expr_ret_stack;
@@ -862,7 +846,7 @@ mod tests {
 
     #[test]
     fn test_hex_literals_multiple() -> Result<()> {
-        let hex_literals = vec![
+        let hex_literals = [
             HexLiteral {
                 hex: "7B".to_string(), // 123 in decimal
                 loc: Loc::File(0, 0, 0),
@@ -877,7 +861,7 @@ mod tests {
         bytes[0] = 0x7B;
         bytes[1] = 0xFF;
         let expected = Concrete::Bytes(2, H256::from_slice(&bytes));
-        test_hex_literals(&hex_literals, expected)
+        test_hex_literals(&hex_literals[..], expected)
     }
 
     #[test]
@@ -886,7 +870,7 @@ mod tests {
             hex: "".to_string(),
             loc: Loc::File(0, 0, 0),
         };
-        let expected = Concrete::Bytes(1, H256::default());
+        let expected = Concrete::Bytes(0, H256::default());
         test_hex_literals(&[hex_literal], expected)
     }
 
@@ -1015,7 +999,6 @@ mod tests {
         let cvar_node = ContextVarNode::from(stack[0].expect_single()?);
         assert!(cvar_node.is_const(&analyzer, arena)?);
         let min = cvar_node.evaled_range_min(&analyzer, arena)?.unwrap();
-        println!("{min}");
         let conc_value = min.maybe_concrete().unwrap().val;
         assert!(
             conc_value == expected,

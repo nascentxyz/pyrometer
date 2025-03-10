@@ -88,24 +88,18 @@ impl std::fmt::Display for Elem<Concrete> {
             }
             Elem::Expr(RangeExpr { lhs, op, rhs, .. }) => match op {
                 RangeOp::Min | RangeOp::Max => {
-                    write!(f, "{}{{{}, {}}}", op.to_string(), lhs, rhs)
+                    write!(f, "{op}{{{lhs}, {rhs}}}")
                 }
                 RangeOp::Cast => match &**rhs {
                     Elem::Concrete(RangeConcrete { val, .. }) => {
-                        write!(
-                            f,
-                            "{}({}, {})",
-                            op.to_string(),
-                            lhs,
-                            val.as_builtin().basic_as_string()
-                        )
+                        write!(f, "{op}({lhs}, {})", val.as_builtin().basic_as_string())
                     }
-                    _ => write!(f, "{}({}, {})", op.to_string(), lhs, rhs),
+                    _ => write!(f, "{op}({lhs}, {rhs})"),
                 },
                 RangeOp::BitNot => {
-                    write!(f, "~{}", lhs)
+                    write!(f, "~{lhs}")
                 }
-                _ => write!(f, "({} {} {})", lhs, op.to_string(), rhs),
+                _ => write!(f, "({lhs} {op} {rhs})"),
             },
             Elem::Arena(idx) => write!(f, "arena_idx_{idx}"),
             Elem::Null => write!(f, "<null>"),

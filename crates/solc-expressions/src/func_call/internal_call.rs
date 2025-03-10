@@ -1,19 +1,25 @@
 //! Traits & blanket implementations that facilitate performing locally scoped function calls.
 
-use crate::func_caller::NamedOrUnnamedArgs;
 use crate::{
-    assign::Assign, func_call::func_caller::FuncCaller, helper::CallerHelper, ContextBuilder,
-    ExpressionParser,
+    helper::CallerHelper,
+    member_access::{BuiltinAccess, LibraryAccess},
 };
 
 use graph::{
-    elem::Elem,
-    nodes::{Builtin, Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet},
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, VarType,
+    nodes::{BuiltInNode, ContextNode, ContextVarNode, ContractNode, FunctionNode, StructNode},
+    AnalyzerBackend, GraphBackend, Node, TypeNode, VarType,
 };
-use shared::{ExprErr, IntoExprErr, RangeArena};
+use shared::{ExprErr, GraphError, NodeIdx};
 
-use solang_parser::pt::{Expression, Identifier, Loc, NamedArgument};
+use solang_parser::pt::{Expression, FunctionTy};
+
+use std::collections::BTreeMap;
+
+pub struct FindFunc {
+    pub func: FunctionNode,
+    pub reordering: BTreeMap<usize, usize>,
+    pub was_lib_func: bool,
+}
 
 impl<T> InternalFuncCaller for T where
     T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
@@ -23,313 +29,339 @@ impl<T> InternalFuncCaller for T where
 pub trait InternalFuncCaller:
     AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
 {
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Perform a named function call
-    fn call_internal_named_func(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: &Loc,
-        ident: &Identifier,
-        input_args: &[NamedArgument],
-    ) -> Result<(), ExprErr> {
-        // It is a function call, check if we have the ident in scope
-        let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
-        // filter down all funcs to those that match
-        let possible_funcs = funcs
-            .iter()
-            .filter(|func| {
-                let named_correctly = func
-                    .name(self)
-                    .unwrap()
-                    .starts_with(&format!("{}(", ident.name));
-                if !named_correctly {
-                    false
-                } else {
-                    // filter by params
-                    let params = func.params(self);
-                    if params.len() != input_args.len() {
-                        false
-                    } else {
-                        params.iter().all(|param| {
-                            input_args
-                                .iter()
-                                .any(|input| input.name.name == param.name(self).unwrap())
-                        })
-                    }
+    fn ordered_fn_inputs(&self, func: NodeIdx) -> Option<Vec<String>> {
+        match self.node(func) {
+            Node::ContextVar(..) => match ContextVarNode::from(func).ty(self).unwrap() {
+                VarType::User(TypeNode::Func(func), _) => Some(func.ordered_param_names(self)),
+                VarType::User(TypeNode::Struct(strukt), _) => {
+                    Some(strukt.ordered_new_param_names(self))
                 }
-            })
-            .copied()
-            .collect::<Vec<_>>();
-
-        if possible_funcs.is_empty() {
-            // check structs
-            let structs = ctx.visible_structs(self).into_expr_err(*loc)?;
-            let possible_structs = structs
-                .iter()
-                .filter(|strukt| {
-                    let named_correctly = strukt
-                        .name(self)
-                        .unwrap()
-                        .starts_with(&ident.name.to_string());
-                    if !named_correctly {
-                        false
-                    } else {
-                        // filter by params
-                        let fields = strukt.fields(self);
-                        if fields.len() != input_args.len() {
-                            false
-                        } else {
-                            fields.iter().all(|field| {
-                                input_args
-                                    .iter()
-                                    .any(|input| input.name.name == field.name(self).unwrap())
-                            })
-                        }
-                    }
-                })
-                .copied()
-                .collect::<Vec<_>>();
-            if possible_structs.is_empty() {
-                Err(ExprErr::FunctionNotFound(
-                    *loc,
-                    format!(
-                        "No functions or structs found for named function call: {:?}",
-                        ident.name
-                    ),
-                ))
-            } else if possible_structs.len() == 1 {
-                let strukt = possible_structs[0];
-                let var =
-                    ContextVar::new_from_struct(*loc, strukt, ctx, self).into_expr_err(*loc)?;
-                let cvar = self.add_node(Node::ContextVar(var));
-                ctx.add_var(cvar.into(), self).into_expr_err(*loc)?;
-                self.add_edge(cvar, ctx, Edge::Context(ContextEdge::Variable));
-
-                strukt.fields(self).iter().try_for_each(|field| {
-                    let field_cvar = ContextVar::maybe_new_from_field(
-                        self,
-                        *loc,
-                        ContextVarNode::from(cvar)
-                            .underlying(self)
-                            .into_expr_err(*loc)?,
-                        field.underlying(self).unwrap().clone(),
-                    )
-                    .expect("Invalid struct field");
-
-                    let fc_node = self.add_node(Node::ContextVar(field_cvar));
-                    self.add_edge(
-                        fc_node,
-                        cvar,
-                        Edge::Context(ContextEdge::AttrAccess("field")),
-                    );
-                    self.add_edge(fc_node, ctx, Edge::Context(ContextEdge::Variable));
-                    ctx.add_var(fc_node.into(), self).into_expr_err(*loc)?;
-                    let field_as_ret = ExprRet::Single(fc_node);
-                    let input = input_args
-                        .iter()
-                        .find(|arg| arg.name.name == field.name(self).unwrap())
-                        .expect("No field in struct in struct construction");
-                    self.parse_ctx_expr(arena, &input.expr, ctx)?;
-                    self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                        let Some(assignment) =
-                            ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?
-                        else {
-                            return Err(ExprErr::NoRhs(loc, "Array creation failed".to_string()));
-                        };
-
-                        if matches!(assignment, ExprRet::CtxKilled(_)) {
-                            ctx.push_expr(assignment, analyzer).into_expr_err(loc)?;
-                            return Ok(());
-                        }
-
-                        analyzer.match_assign_sides(arena, ctx, loc, &field_as_ret, &assignment)?;
-                        let _ = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)?;
-                        Ok(())
-                    })
-                })?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, _arena, ctx, _loc| {
-                    ctx.push_expr(ExprRet::Single(cvar), analyzer)
-                        .into_expr_err(*loc)?;
-                    Ok(())
-                })?;
-                Ok(())
-            } else {
-                Err(ExprErr::Todo(
-                    *loc,
-                    "Disambiguation of struct construction not currently supported".to_string(),
-                ))
-            }
-        } else if possible_funcs.len() == 1 {
-            let func = possible_funcs[0];
-            let params = func.params(self);
-            let inputs: Vec<_> = params
-                .iter()
-                .map(|param| {
-                    let input = input_args
-                        .iter()
-                        .find(|arg| arg.name.name == param.name(self).unwrap())
-                        .expect(
-                            "No parameter with named provided in named parameter function call",
-                        );
-                    input.expr.clone()
-                })
-                .collect();
-            self.parse_inputs(arena, ctx, *loc, &inputs[..])?;
-            self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                let inputs = ctx
-                    .pop_expr_latest(loc, analyzer)
-                    .into_expr_err(loc)?
-                    .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                analyzer.setup_fn_call(arena, &ident.loc, &inputs, func.into(), ctx, None)
-            })
-        } else {
-            todo!("Disambiguate named function call");
+                VarType::User(TypeNode::Contract(con), _) => {
+                    Some(con.ordered_new_param_names(self))
+                }
+                _ => None,
+            },
+            Node::Function(..) => Some(FunctionNode::from(func).ordered_param_names(self)),
+            Node::Struct(..) => Some(StructNode::from(func).ordered_new_param_names(self)),
+            Node::Contract(..) => Some(ContractNode::from(func).ordered_new_param_names(self)),
+            _ => None,
         }
     }
 
-    #[tracing::instrument(level = "trace", skip_all)]
-    fn call_internal_func(
+    fn potential_lib_funcs(
         &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        loc: &Loc,
-        ident: &Identifier,
-        func_expr: &Expression,
-        input_exprs: NamedOrUnnamedArgs,
-    ) -> Result<(), ExprErr> {
-        tracing::trace!("function call: {}(..)", ident.name);
-        // It is a function call, check if we have the ident in scope
-        let funcs = ctx.visible_funcs(self).into_expr_err(*loc)?;
+        name: &str,
+        num_inputs: usize,
+        maybe_named: &Option<Vec<&str>>,
+        maybe_member: Option<NodeIdx>,
+    ) -> Result<Vec<(FunctionNode, bool)>, GraphError> {
+        let Some(member) = maybe_member else {
+            return Ok(vec![]);
+        };
 
-        // filter down all funcs to those that match
-        let possible_funcs = funcs
+        let (var_ty, is_storage) = match self.node(member) {
+            Node::ContextVar(..) => {
+                let var = ContextVarNode::from(member);
+                (var.ty(self).unwrap().clone(), var.is_storage(self)?)
+            }
+            _ => (VarType::try_from_idx(self, member).unwrap(), false),
+        };
+
+        let mut funcs = self.possible_library_funcs(ctx, var_ty.ty_idx());
+        match var_ty {
+            VarType::BuiltIn(_, _) => {
+                if let Some((ret, is_lib)) = self.builtin_builtin_fn(
+                    BuiltInNode::from(var_ty.ty_idx()),
+                    name,
+                    num_inputs,
+                    is_storage,
+                )? {
+                    if is_lib {
+                        funcs.push(ret);
+                    }
+                }
+            }
+            VarType::User(TypeNode::Ty(ty), _) => {
+                if let Some(func) = self.specialize_ty_fn(ty, name)? {
+                    funcs.push(func)
+                }
+            }
+            _ => {}
+        }
+
+        let mut possible_funcs = funcs
             .iter()
-            .filter(|func| {
-                let named_correctly = func
-                    .name(self)
-                    .unwrap()
-                    .starts_with(&format!("{}(", ident.name));
-                if !named_correctly {
-                    false
+            .filter(|func| func.name(self).unwrap().starts_with(&format!("{name}(")))
+            .map(|func| (func, func.params(self)))
+            .filter(|(_, params)| {
+                // filter by param length, add 1 to inputs due to passing the member
+                params.len() == (num_inputs + 1)
+            })
+            .filter(|(_, params)| {
+                if let Some(ref named) = maybe_named {
+                    // we skip the first because its not named when used a library function
+                    params
+                        .iter()
+                        .skip(1)
+                        .all(|param| named.contains(&&*param.name(self).unwrap()))
                 } else {
-                    // filter by params
-                    let params = func.params(self);
-                    if params.len() != input_exprs.len() {
-                        false
-                    } else if matches!(input_exprs, NamedOrUnnamedArgs::Named(_)) {
-                        params.iter().all(|param| {
-                            input_exprs
-                                .named_args()
-                                .unwrap()
-                                .iter()
-                                .any(|input| input.name.name == param.name(self).unwrap())
-                        })
+                    true
+                }
+            })
+            .map(|(func, _)| (*func, true))
+            .collect::<Vec<_>>();
+        possible_funcs.sort();
+        possible_funcs.dedup();
+        Ok(possible_funcs)
+    }
+
+    fn potential_member_funcs(
+        &mut self,
+        name: &str,
+        member: NodeIdx,
+        num_inputs: usize,
+    ) -> Result<(Vec<FunctionNode>, bool), GraphError> {
+        match self.node(member) {
+            // Only instantiated contracts and bytes & strings have non-library functions
+            Node::ContextVar(..) => {
+                let var = ContextVarNode::from(member);
+                match var.ty(self)? {
+                    VarType::User(TypeNode::Contract(con_node), _) => {
+                        let c = *con_node;
+                        let func_mapping = c.linearized_functions(self, false)?;
+                        Ok((func_mapping.values().copied().collect(), false))
+                    }
+                    _ => Ok((vec![], false)),
+                }
+            }
+            Node::Builtin(_) => {
+                if let Some((ret, lib)) =
+                    self.builtin_builtin_fn(BuiltInNode::from(member), name, num_inputs, false)?
+                {
+                    if !lib {
+                        return Ok((vec![ret], true));
+                    }
+                }
+                Ok((vec![], false))
+            }
+            _ => Ok((vec![], false)),
+        }
+    }
+
+    fn potential_funcs(
+        &mut self,
+        ctx: ContextNode,
+        name: &str,
+        num_inputs: usize,
+        maybe_named: &Option<Vec<&str>>,
+        maybe_member: Option<NodeIdx>,
+    ) -> Result<(Vec<(FunctionNode, bool)>, bool), GraphError> {
+        let funcs = if let Some(member) = maybe_member {
+            let (mut funcs, early_end) = self.potential_member_funcs(name, member, num_inputs)?;
+            if early_end && funcs.len() == 1 {
+                return Ok((vec![(funcs.swap_remove(0), false)], true));
+            } else {
+                funcs
+            }
+        } else {
+            ctx.visible_funcs(self)?
+        };
+
+        let mut possible_funcs = funcs
+            .iter()
+            .filter(|func| func.name(self).unwrap().starts_with(&format!("{name}(")))
+            .map(|func| (func, func.params(self)))
+            .filter(|(_, params)| {
+                // filter by params
+                params.len() == num_inputs
+            })
+            .filter(|(_, params)| {
+                if let Some(ref named) = maybe_named {
+                    params
+                        .iter()
+                        .all(|param| named.contains(&&*param.name(self).unwrap()))
+                } else {
+                    true
+                }
+            })
+            .map(|(func, _)| (*func, false))
+            .collect::<Vec<_>>();
+        possible_funcs.extend(self.potential_lib_funcs(
+            ctx,
+            name,
+            num_inputs,
+            maybe_named,
+            maybe_member,
+        )?);
+        possible_funcs.sort();
+        possible_funcs.dedup();
+        Ok((possible_funcs, false))
+    }
+
+    fn potential_super_funcs(
+        &mut self,
+        ctx: ContextNode,
+        name: &str,
+        num_inputs: usize,
+        maybe_named: &Option<Vec<&str>>,
+    ) -> Result<Vec<(FunctionNode, bool)>, GraphError> {
+        if let Some(contract) = ctx.maybe_associated_contract(self)? {
+            let mut possible_funcs: Vec<_> = contract
+                .linearized_functions(self, true)?
+                .into_iter()
+                .filter(|(func_name, func_node)| {
+                    if !func_name.starts_with(name) {
+                        return false;
+                    }
+
+                    let params = func_node.params(self);
+
+                    if params.len() != num_inputs {
+                        return false;
+                    }
+
+                    if let Some(ref named) = maybe_named {
+                        params
+                            .iter()
+                            .all(|param| named.contains(&&*param.name(self).unwrap()))
                     } else {
                         true
                     }
+                })
+                .map(|(_, node)| node)
+                .collect();
+            possible_funcs.sort();
+            possible_funcs.dedup();
+            Ok(possible_funcs.into_iter().map(|f| (f, false)).collect())
+        } else {
+            Ok(vec![])
+        }
+    }
+
+    fn find_modifier(
+        &mut self,
+        ctx: ContextNode,
+        name: &str,
+        constructor: bool,
+    ) -> Result<Vec<FunctionNode>, GraphError> {
+        let mut potential_mods = if constructor {
+            let cons = ctx.visible_constructors(self)?;
+            cons.into_iter()
+                .filter(|func| {
+                    let res = matches!(func.ty(self), Ok(FunctionTy::Constructor));
+                    let contract = func.maybe_associated_contract(self).unwrap();
+                    res && contract.name(self).unwrap().starts_with(&name.to_string())
+                })
+                .collect::<Vec<_>>()
+        } else {
+            let mods = ctx.visible_modifiers(self)?;
+            mods.into_iter()
+                .filter(|func| matches!(func.ty(self), Ok(FunctionTy::Modifier)))
+                .filter(|func| func.name(self).unwrap().starts_with(&format!("{name}(")))
+                .collect::<Vec<_>>()
+        };
+
+        potential_mods.sort();
+        potential_mods.dedup();
+        if potential_mods.len() == 1 {
+            Ok(vec![potential_mods.swap_remove(0)])
+        } else {
+            Ok(potential_mods)
+        }
+    }
+
+    fn find_func(
+        &mut self,
+        ctx: ContextNode,
+        name: &str,
+        num_inputs: usize,
+        maybe_named: &Option<Vec<&str>>,
+        is_super: bool,
+        member_access: Option<NodeIdx>,
+    ) -> Result<Vec<FindFunc>, GraphError> {
+        let possible_funcs = if is_super {
+            self.potential_super_funcs(ctx, name, num_inputs, maybe_named)?
+        } else {
+            let (mut funcs, early_end) =
+                self.potential_funcs(ctx, name, num_inputs, maybe_named, member_access)?;
+            if early_end {
+                return Ok(vec![FindFunc {
+                    func: funcs.swap_remove(0).0,
+                    reordering: (0..num_inputs).map(|i| (i, i)).collect(),
+                    was_lib_func: false,
+                }]);
+            } else {
+                funcs
+            }
+        };
+
+        let stack = &ctx.underlying(self)?.expr_ret_stack;
+        let len = stack.len();
+        let mut inputs = stack[len.saturating_sub(num_inputs)..].to_vec();
+        inputs.reverse();
+
+        let matched_funcs = possible_funcs
+            .iter()
+            .filter_map(|(func, lib_func)| {
+                let ordered_pos_to_input_pos: BTreeMap<_, _> =
+                    if let Some(input_names) = &maybe_named {
+                        let mut ordered_names = self.ordered_fn_inputs(func.0.into())?;
+                        ordered_names = if *lib_func {
+                            // remove the first input for a lib function
+                            ordered_names.remove(0);
+                            ordered_names
+                        } else {
+                            ordered_names
+                        };
+
+                        if ordered_names[..] != input_names[..] {
+                            ordered_names
+                                .iter()
+                                .enumerate()
+                                .filter_map(|(i, n)| {
+                                    Some((i, input_names.iter().position(|k| k == n)?))
+                                })
+                                .collect()
+                        } else {
+                            (0..input_names.len()).map(|i| (i, i)).collect()
+                        }
+                    } else {
+                        (0..num_inputs).map(|i| (i, i)).collect()
+                    };
+
+                let checked_params = if *lib_func {
+                    // remove the first element because its already typechecked in a lib func
+                    let mut params = func.params(self);
+                    params.remove(0);
+                    params
+                } else {
+                    func.params(self)
+                };
+
+                let tys = checked_params
+                    .iter()
+                    .map(|param| VarType::try_from_idx(self, param.ty(self).unwrap()).unwrap())
+                    .collect::<Vec<_>>();
+
+                let all = tys.iter().enumerate().all(|(true_idx, ty)| {
+                    let input_pos = ordered_pos_to_input_pos.get(&true_idx).unwrap();
+                    inputs[*input_pos]
+                        .implicitly_castable_to(self, ty)
+                        .unwrap_or(false)
+                });
+
+                if all {
+                    Some(FindFunc {
+                        func: *func,
+                        reordering: ordered_pos_to_input_pos,
+                        was_lib_func: *lib_func,
+                    })
+                } else {
+                    None
                 }
             })
-            .copied()
             .collect::<Vec<_>>();
-
-        match possible_funcs.len() {
-            0 => {
-                // this is a builtin, cast, or unknown function
-                self.parse_ctx_expr(arena, func_expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let ret = ctx
-                        .pop_expr_latest(loc, analyzer)
-                        .into_expr_err(loc)?
-                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                    let ret = ret.flatten();
-                    if matches!(ret, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.match_intrinsic_fallback(arena, ctx, &loc, &input_exprs, ret)
-                })
-            }
-            1 => {
-                // there is only a single possible function
-                input_exprs.parse(arena, self, ctx, *loc)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let mut inputs = ctx
-                        .pop_expr_latest(loc, analyzer)
-                        .into_expr_err(loc)?
-                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                    inputs = if let Some(ordered_param_names) =
-                        possible_funcs[0].maybe_ordered_param_names(analyzer)
-                    {
-                        input_exprs.order(inputs, ordered_param_names)
-                    } else {
-                        inputs
-                    };
-                    let inputs = inputs.flatten();
-                    if matches!(inputs, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.setup_fn_call(
-                        arena,
-                        &ident.loc,
-                        &inputs,
-                        (possible_funcs[0]).into(),
-                        ctx,
-                        None,
-                    )
-                })
-            }
-            _ => {
-                // this is the annoying case due to function overloading & type inference on number literals
-                input_exprs.parse(arena, self, ctx, *loc)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let inputs = ctx
-                        .pop_expr_latest(loc, analyzer)
-                        .into_expr_err(loc)?
-                        .unwrap_or_else(|| ExprRet::Multi(vec![]));
-                    let inputs = inputs.flatten();
-                    if matches!(inputs, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(inputs, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    let resizeables: Vec<_> = inputs.as_flat_vec()
-                        .iter()
-                        .map(|idx| {
-                            match VarType::try_from_idx(analyzer, *idx) {
-                                Some(VarType::BuiltIn(bn, _)) => {
-                                    matches!(analyzer.node(bn), Node::Builtin(Builtin::Uint(_)) | Node::Builtin(Builtin::Int(_)) | Node::Builtin(Builtin::Bytes(_)))
-                                }
-                                Some(VarType::Concrete(c)) => {
-                                    matches!(analyzer.node(c), Node::Concrete(Concrete::Uint(_, _)) | Node::Concrete(Concrete::Int(_, _)) | Node::Concrete(Concrete::Bytes(_, _)))
-                                }
-                                _ => false
-                            }
-                        })
-                        .collect();
-                    if let Some(func) = analyzer.disambiguate_fn_call(
-                        arena,
-                        &ident.name,
-                        resizeables,
-                        &inputs,
-                        &possible_funcs,
-                    ) {
-                        analyzer.setup_fn_call(arena, &loc, &inputs, func.into(), ctx, None)
-                    } else {
-                        Err(ExprErr::FunctionNotFound(
-                            loc,
-                            format!(
-                                "Could not disambiguate function, default input types: {}, possible functions: {:#?}",
-                                inputs.try_as_func_input_str(analyzer, arena),
-                                possible_funcs
-                                    .iter()
-                                    .map(|i| i.name(analyzer).unwrap())
-                                    .collect::<Vec<_>>()
-                            ),
-                        ))
-                    }
-                })
-            }
-        }
+        Ok(matched_funcs)
     }
 }

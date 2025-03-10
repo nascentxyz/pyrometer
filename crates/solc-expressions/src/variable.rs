@@ -7,7 +7,7 @@ use graph::{
 };
 use shared::{ExprErr, GraphError, IntoExprErr, NodeIdx, RangeArena};
 
-use solang_parser::pt::{Expression, Identifier, Loc, StorageLocation, VariableDeclaration};
+use solang_parser::pt::{Expression, Identifier, Loc, StorageLocation};
 
 impl<T> Variable for T where T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized {}
 /// Deals with variable retrieval, parsing, and versioning
@@ -76,10 +76,12 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         } else if (self.env_variable(arena, ident, target_ctx)?).is_some() {
             Ok(())
         } else if let Some(idxs) = self.user_types().get(&ident.name).cloned() {
+            tracing::trace!("Getting variable via user_types");
             let idx = if idxs.len() == 1 {
                 idxs[0]
             } else {
                 // disambiguate by scope
+                tracing::trace!("disambiguating by scope");
                 let in_scope = if let Some(contract) = ctx
                     .maybe_associated_contract(self)
                     .into_expr_err(ident.loc)?
@@ -95,7 +97,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 } else {
                     vec![]
                 };
-                if let Some(idx) = self.disambiguate(ctx, ident.loc, idxs, in_scope, location) {
+                if let Some(idx) = self.disambiguate(ctx, idxs, in_scope, location) {
                     idx
                 } else {
                     return Err(ExprErr::ParseError(
@@ -141,7 +143,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 }
             };
 
-            let new_cvarnode = self.add_node(Node::ContextVar(var));
+            let new_cvarnode = self.add_node(var);
 
             ctx.add_var(new_cvarnode.into(), self)
                 .into_expr_err(ident.loc)?;
@@ -157,6 +159,15 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     idx,
                     Edge::Context(ContextEdge::ContractVariable),
                 );
+            }
+
+            if let Some(strukt) = ContextVarNode::from(new_cvarnode)
+                .maybe_struct(self)
+                .into_expr_err(ident.loc)?
+            {
+                strukt
+                    .add_fields_to_cvar(self, ident.loc, ContextVarNode::from(new_cvarnode))
+                    .into_expr_err(ident.loc)?;
             }
 
             target_ctx
@@ -192,22 +203,20 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
     fn disambiguate(
         &mut self,
         ctx: ContextNode,
-        loc: Loc,
         mut idxs: Vec<NodeIdx>,
         inscope_storage: Vec<NodeIdx>,
         location: Option<StorageLocation>,
     ) -> Option<NodeIdx> {
         // disambiguate based on left hand side if it exists
-        if let Some(maybe_lhs) = ctx.pop_expr_latest(loc, self).ok()? {
+        if let Some(maybe_lhs) = ctx.underlying(self).ok()?.expr_ret_stack.first() {
+            tracing::trace!("Disambiguate based on lhs: {}", maybe_lhs.debug_str(self));
             if let ExprRet::Single(lhs_idx) = maybe_lhs {
-                if let Some(var_ty) = VarType::try_from_idx(self, lhs_idx) {
+                if let Some(var_ty) = VarType::try_from_idx(self, *lhs_idx) {
                     if idxs.contains(&var_ty.ty_idx()) {
-                        ctx.push_expr(maybe_lhs, self).ok()?;
                         return Some(var_ty.ty_idx());
                     }
                 }
             }
-            ctx.push_expr(maybe_lhs, self).ok()?;
         }
 
         // disambiguate based on storage location
@@ -314,7 +323,10 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         ctx: ContextNode,
-        var_decl: &VariableDeclaration,
+        (name, storage): (
+            Option<impl ToString + Clone>,
+            Option<shared::StorageLocation>,
+        ),
         loc: Loc,
         lhs_paths: &ExprRet,
         rhs_paths: Option<&ExprRet>,
@@ -333,20 +345,20 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 self.match_var_def(
                     arena,
                     ctx,
-                    var_decl,
+                    (name, storage),
                     loc,
                     lhs_paths,
                     Some(&ExprRet::Single(rhs_cvar.into())),
                 )
             }
             (ExprRet::Single(ty), Some(ExprRet::Single(rhs))) => {
-                let name = var_decl.name.clone().expect("Variable wasn't named");
+                let name = name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
                     display_name: name.to_string(),
-                    storage: var_decl.storage.as_ref().map(|s| s.clone().into()),
+                    storage,
                     is_tmp: false,
                     is_symbolic: true,
                     tmp_of: None,
@@ -354,7 +366,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     is_return: false,
                     ty,
                 };
-                let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+                let lhs = ContextVarNode::from(self.add_node(var));
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
 
@@ -374,14 +386,14 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 Ok(false)
             }
             (ExprRet::Single(ty), None) => {
-                let name = var_decl.name.clone().expect("Variable wasn't named");
+                let name = name.clone().expect("Variable wasn't named");
                 let ty = VarType::try_from_idx(self, *ty).expect("Not a known type");
                 let maybe_struct = ty.maybe_struct();
                 let var = ContextVar {
                     loc: Some(loc),
                     name: name.to_string(),
                     display_name: name.to_string(),
-                    storage: var_decl.storage.as_ref().map(|s| s.clone().into()),
+                    storage: storage.as_ref().copied(),
                     is_tmp: false,
                     is_symbolic: true,
                     tmp_of: None,
@@ -389,7 +401,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                     is_return: false,
                     ty,
                 };
-                let lhs = ContextVarNode::from(self.add_node(Node::ContextVar(var)));
+                let lhs = ContextVarNode::from(self.add_node(var));
                 ctx.add_var(lhs, self).into_expr_err(loc)?;
                 self.add_edge(lhs, ctx, Edge::Context(ContextEdge::Variable));
                 if let Some(strukt) = maybe_struct {
@@ -401,19 +413,25 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             }
             (l @ ExprRet::Single(_lhs), Some(ExprRet::Multi(rhs_sides))) => Ok(rhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, l, Some(expr_ret)))
+                .map(|expr_ret| {
+                    self.match_var_def(arena, ctx, (name.clone(), storage), loc, l, Some(expr_ret))
+                })
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
             (ExprRet::Multi(lhs_sides), r @ Some(ExprRet::Single(_))) => Ok(lhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, expr_ret, r))
+                .map(|expr_ret| {
+                    self.match_var_def(arena, ctx, (name.clone(), storage), loc, expr_ret, r)
+                })
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
             (ExprRet::Multi(lhs_sides), None) => Ok(lhs_sides
                 .iter()
-                .map(|expr_ret| self.match_var_def(arena, ctx, var_decl, loc, expr_ret, None))
+                .map(|expr_ret| {
+                    self.match_var_def(arena, ctx, (name.clone(), storage), loc, expr_ret, None)
+                })
                 .collect::<Result<Vec<_>, ExprErr>>()?
                 .iter()
                 .all(|e| *e)),
@@ -427,7 +445,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                             self.match_var_def(
                                 arena,
                                 ctx,
-                                var_decl,
+                                (name.clone(), storage),
                                 loc,
                                 lhs_expr_ret,
                                 Some(rhs_expr_ret),
@@ -443,7 +461,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                             self.match_var_def(
                                 arena,
                                 ctx,
-                                var_decl,
+                                (name.clone(), storage),
                                 loc,
                                 lhs_paths,
                                 Some(rhs_expr_ret),
@@ -454,7 +472,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .all(|e| *e))
                 }
             }
-            (_e, _f) => Err(ExprErr::Todo(
+            (_, _) => Err(ExprErr::Todo(
                 loc,
                 "Unhandled ExprRet combination in `match_var_def`".to_string(),
             )),
@@ -544,7 +562,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                 }
 
                 new_cvar.loc = Some(loc);
-                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                new_cvarnode = self.add_node(new_cvar);
                 if old_ctx != ctx {
                     tracing::trace!(
                         "moving var {} into new context: from {} to {}",
@@ -569,8 +587,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .collect::<Vec<_>>();
                     while let Some((field, parent)) = struct_stack.pop() {
                         let underlying = field.underlying(self).into_expr_err(loc)?;
-                        let new_field_in_inheritor =
-                            self.add_node(Node::ContextVar(underlying.clone()));
+                        let new_field_in_inheritor = self.add_node(underlying.clone());
                         self.add_edge(
                             new_field_in_inheritor,
                             parent,
@@ -585,12 +602,33 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                                 .collect::<Vec<_>>(),
                         );
                     }
+
+                    if let Some(len_var) = cvar_node.array_to_len_var(self) {
+                        let new_len_var = len_var
+                            .latest_version(self)
+                            .underlying(self)
+                            .into_expr_err(loc)?
+                            .clone();
+                        let new_len_node = self.add_node(new_len_var);
+                        ctx.add_var(new_len_node.into(), self).into_expr_err(loc)?;
+                        self.add_edge(new_len_node, ctx, Edge::Context(ContextEdge::Variable));
+                        self.add_edge(
+                            new_len_node,
+                            new_cvarnode,
+                            Edge::Context(ContextEdge::AttrAccess("length")),
+                        );
+                        self.add_edge(
+                            new_len_node,
+                            len_var,
+                            Edge::Context(ContextEdge::InheritedVariable),
+                        );
+                    }
                 } else {
                     self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
                 }
             } else {
                 new_cvar.loc = Some(loc);
-                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                new_cvarnode = self.add_node(new_cvar);
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
             }
         }
@@ -641,7 +679,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
 
                 new_cvar.loc = Some(loc);
                 // new_cvar.display_name = format!("{}_{}", new_cvar.name, cvar_node.prev_versions(self));
-                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                new_cvarnode = self.add_node(new_cvar);
                 if old_ctx != ctx {
                     tracing::trace!(
                         "moving var {} into new context: from {} to {}",
@@ -666,8 +704,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                         .collect::<Vec<_>>();
                     while let Some((field, parent)) = struct_stack.pop() {
                         let underlying = field.underlying(self).into_expr_err(loc)?;
-                        let new_field_in_inheritor =
-                            self.add_node(Node::ContextVar(underlying.clone()));
+                        let new_field_in_inheritor = self.add_node(underlying.clone());
                         self.add_edge(
                             new_field_in_inheritor,
                             parent,
@@ -682,46 +719,37 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
                                 .collect::<Vec<_>>(),
                         );
                     }
+                    if let Some(len_var) = cvar_node.array_to_len_var(self) {
+                        let new_len_var = len_var
+                            .latest_version(self)
+                            .underlying(self)
+                            .into_expr_err(loc)?
+                            .clone();
+                        let new_len_node = self.add_node(new_len_var);
+                        ctx.add_var(new_len_node.into(), self).into_expr_err(loc)?;
+                        self.add_edge(new_len_node, ctx, Edge::Context(ContextEdge::Variable));
+                        self.add_edge(
+                            new_len_node,
+                            new_cvarnode,
+                            Edge::Context(ContextEdge::AttrAccess("length")),
+                        );
+                        self.add_edge(
+                            new_len_node,
+                            len_var,
+                            Edge::Context(ContextEdge::InheritedVariable),
+                        );
+                    }
                 } else {
                     self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
                 }
             } else {
                 new_cvar.loc = Some(loc);
-                new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+                new_cvarnode = self.add_node(new_cvar);
                 self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
             }
         }
 
         self.mark_dirty(new_cvarnode);
-
-        Ok(ContextVarNode::from(new_cvarnode))
-    }
-
-    /// Creates a new version of a variable in it's current context
-    fn advance_var_in_curr_ctx(
-        &mut self,
-        cvar_node: ContextVarNode,
-        loc: Loc,
-    ) -> Result<ContextVarNode, ExprErr> {
-        tracing::trace!(
-            "advancing variable: {}",
-            cvar_node.display_name(self).into_expr_err(loc)?
-        );
-        if let Some(cvar) = cvar_node.next_version(self) {
-            panic!(
-                "Not latest version of: {}",
-                cvar.display_name(self).unwrap()
-            );
-        }
-        let mut new_cvar = cvar_node
-            .latest_version(self)
-            .underlying(self)
-            .into_expr_err(loc)?
-            .clone();
-        new_cvar.loc = Some(loc);
-
-        let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
-        self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
 
         Ok(ContextVarNode::from(new_cvarnode))
     }
@@ -735,7 +763,7 @@ pub trait Variable: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Size
             .unwrap()
             .clone();
         new_cvar.loc = Some(loc);
-        let new_cvarnode = self.add_node(Node::ContextVar(new_cvar));
+        let new_cvarnode = self.add_node(new_cvar);
         self.add_edge(new_cvarnode, cvar_node.0, Edge::Context(ContextEdge::Prev));
         ContextVarNode::from(new_cvarnode)
             .underlying_mut(self)

@@ -1,322 +1,31 @@
 //! Traits & blanket implementations that facilitate performing various forms of function calls.
 
 use crate::{
-    func_call::apply::FuncApplier, func_call::modifier::ModifierCaller, helper::CallerHelper,
-    internal_call::InternalFuncCaller, intrinsic_call::IntrinsicFuncCaller,
-    namespaced_call::NameSpaceFuncCaller, ContextBuilder, ExpressionParser, StatementParser,
+    func_call::{apply::FuncApplier, modifier::ModifierCaller},
+    helper::CallerHelper,
+    ContextBuilder, Flatten,
 };
-use std::cell::RefCell;
-use std::rc::Rc;
 
 use graph::{
     elem::Elem,
     nodes::{
         Concrete, Context, ContextNode, ContextVar, ContextVarNode, ExprRet, FunctionNode,
-        FunctionParamNode, ModifierState,
+        FunctionParamNode, ModifierState, SubContextKind,
     },
     AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node,
 };
-use shared::{ExprErr, IntoExprErr, NodeIdx, RangeArena};
+use shared::{ExprErr, IntoExprErr, RangeArena};
 
-use solang_parser::pt::{Expression, Loc, NamedArgument};
-
-use std::collections::BTreeMap;
-
-#[derive(Debug)]
-pub enum NamedOrUnnamedArgs<'a> {
-    Named(&'a [NamedArgument]),
-    Unnamed(&'a [Expression]),
-}
-
-impl<'a> NamedOrUnnamedArgs<'a> {
-    pub fn named_args(&self) -> Option<&'a [NamedArgument]> {
-        match self {
-            NamedOrUnnamedArgs::Named(inner) => Some(inner),
-            _ => None,
-        }
-    }
-
-    pub fn unnamed_args(&self) -> Option<&'a [Expression]> {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => Some(inner),
-            _ => None,
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => inner.len(),
-            NamedOrUnnamedArgs::Named(inner) => inner.len(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => inner.len() == 0,
-            NamedOrUnnamedArgs::Named(inner) => inner.len() == 0,
-        }
-    }
-
-    pub fn exprs(&self) -> Vec<Expression> {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => inner.to_vec(),
-            NamedOrUnnamedArgs::Named(inner) => inner.iter().map(|i| i.expr.clone()).collect(),
-        }
-    }
-
-    pub fn parse(
-        &self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized),
-        ctx: ContextNode,
-        loc: Loc,
-    ) -> Result<(), ExprErr> {
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => analyzer.parse_inputs(arena, ctx, loc, inner),
-            NamedOrUnnamedArgs::Named(inner) => {
-                let append = Rc::new(RefCell::new(false));
-                inner.iter().try_for_each(|arg| {
-                    analyzer.parse_input(arena, ctx, loc, &arg.expr, &append)?;
-                    Ok(())
-                })?;
-                if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Inputs did not have left hand sides".to_string(),
-                            ));
-                        };
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
-                    })
-                } else {
-                    Ok(())
-                }
-            }
-        }
-    }
-
-    pub fn parse_n(
-        &self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        n: usize,
-        analyzer: &mut (impl AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized),
-        ctx: ContextNode,
-        loc: Loc,
-    ) -> Result<(), ExprErr> {
-        let append = Rc::new(RefCell::new(false));
-        match self {
-            NamedOrUnnamedArgs::Unnamed(inner) => {
-                inner.iter().take(n).try_for_each(|arg| {
-                    analyzer.parse_input(arena, ctx, loc, arg, &append)?;
-                    Ok(())
-                })?;
-                if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Inputs did not have left hand sides".to_string(),
-                            ));
-                        };
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
-                    })
-                } else {
-                    Ok(())
-                }
-            }
-            NamedOrUnnamedArgs::Named(inner) => {
-                inner.iter().take(n).try_for_each(|arg| {
-                    analyzer.parse_input(arena, ctx, loc, &arg.expr, &append)?;
-                    Ok(())
-                })?;
-                if !inner.is_empty() {
-                    analyzer.apply_to_edges(ctx, loc, arena, &|analyzer, _arena, ctx, loc| {
-                        let Some(ret) = ctx.pop_tmp_expr(loc, analyzer).into_expr_err(loc)? else {
-                            return Err(ExprErr::NoLhs(
-                                loc,
-                                "Inputs did not have left hand sides".to_string(),
-                            ));
-                        };
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)
-                    })
-                } else {
-                    Ok(())
-                }
-            }
-        }
-    }
-
-    pub fn order(&self, inputs: ExprRet, ordered_params: Vec<String>) -> ExprRet {
-        if inputs.len() < 2 {
-            inputs
-        } else {
-            match self {
-                NamedOrUnnamedArgs::Unnamed(_inner) => inputs,
-                NamedOrUnnamedArgs::Named(inner) => ExprRet::Multi(
-                    ordered_params
-                        .iter()
-                        .map(|param| {
-                            let index = inner
-                                .iter()
-                                .enumerate()
-                                .find(|(_i, arg)| &arg.name.name == param)
-                                .unwrap()
-                                .0;
-                            match &inputs {
-                                ExprRet::Multi(inner) => inner[index].clone(),
-                                _ => panic!("Mismatched ExprRet type"),
-                            }
-                        })
-                        .collect(),
-                ),
-            }
-        }
-    }
-}
+use solang_parser::pt::{CodeLocation, Expression, Loc};
 
 impl<T> FuncCaller for T where
-    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend + CallerHelper
+    T: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized + GraphBackend
 {
 }
 /// A trait for calling a function
 pub trait FuncCaller:
     GraphBackend + AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> + Sized
 {
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Perform a function call with named inputs
-    fn named_fn_call_expr(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: &Loc,
-        func_expr: &Expression,
-        input_exprs: &[NamedArgument],
-    ) -> Result<(), ExprErr> {
-        use solang_parser::pt::Expression::*;
-        match func_expr {
-            MemberAccess(loc, member_expr, ident) => self.call_name_spaced_func(
-                arena,
-                ctx,
-                loc,
-                member_expr,
-                ident,
-                NamedOrUnnamedArgs::Named(input_exprs),
-            ),
-            Variable(ident) => self.call_internal_named_func(arena, ctx, loc, ident, input_exprs),
-            e => Err(ExprErr::IntrinsicNamedArgs(
-                *loc,
-                format!("Cannot call intrinsic functions with named arguments. Call: {e:?}"),
-            )),
-        }
-    }
-    #[tracing::instrument(level = "trace", skip_all)]
-    /// Perform a function call
-    fn fn_call_expr(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: &Loc,
-        func_expr: &Expression,
-        input_exprs: &[Expression],
-    ) -> Result<(), ExprErr> {
-        use solang_parser::pt::Expression::*;
-        match func_expr {
-            MemberAccess(loc, member_expr, ident) => self.call_name_spaced_func(
-                arena,
-                ctx,
-                loc,
-                member_expr,
-                ident,
-                NamedOrUnnamedArgs::Unnamed(input_exprs),
-            ),
-            Variable(ident) => self.call_internal_func(
-                arena,
-                ctx,
-                loc,
-                ident,
-                func_expr,
-                NamedOrUnnamedArgs::Unnamed(input_exprs),
-            ),
-            _ => {
-                self.parse_ctx_expr(arena, func_expr, ctx)?;
-                self.apply_to_edges(ctx, *loc, arena, &|analyzer, arena, ctx, loc| {
-                    let Some(ret) = ctx.pop_expr_latest(loc, analyzer).into_expr_err(loc)? else {
-                        return Err(ExprErr::NoLhs(
-                            loc,
-                            "Function call to nonexistent function".to_string(),
-                        ));
-                    };
-                    if matches!(ret, ExprRet::CtxKilled(_)) {
-                        ctx.push_expr(ret, analyzer).into_expr_err(loc)?;
-                        return Ok(());
-                    }
-                    analyzer.match_intrinsic_fallback(
-                        arena,
-                        ctx,
-                        &loc,
-                        &NamedOrUnnamedArgs::Unnamed(input_exprs),
-                        ret,
-                    )
-                })
-            }
-        }
-    }
-
-    /// Perform an intrinsic function call
-    fn match_intrinsic_fallback(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        ctx: ContextNode,
-        loc: &Loc,
-        input_exprs: &NamedOrUnnamedArgs,
-        ret: ExprRet,
-    ) -> Result<(), ExprErr> {
-        match ret {
-            ExprRet::Single(func_idx) | ExprRet::SingleLiteral(func_idx) => {
-                self.intrinsic_func_call(arena, loc, input_exprs, func_idx, ctx)
-            }
-            ExprRet::Multi(inner) => inner.into_iter().try_for_each(|ret| {
-                self.match_intrinsic_fallback(arena, ctx, loc, input_exprs, ret)
-            }),
-            ExprRet::CtxKilled(kind) => ctx.kill(self, *loc, kind).into_expr_err(*loc),
-            ExprRet::Null => Ok(()),
-        }
-    }
-
-    /// Setups up storage variables for a function call and calls it
-    fn setup_fn_call(
-        &mut self,
-        arena: &mut RangeArena<Elem<Concrete>>,
-        loc: &Loc,
-        inputs: &ExprRet,
-        func_idx: NodeIdx,
-        ctx: ContextNode,
-        func_call_str: Option<&str>,
-    ) -> Result<(), ExprErr> {
-        // if we have a single match thats our function
-        let var = match ContextVar::maybe_from_user_ty(self, *loc, func_idx) {
-            Some(v) => v,
-            None => panic!(
-                "Could not create context variable from user type: {:?}",
-                self.node(func_idx)
-            ),
-        };
-
-        let new_cvarnode = self.add_node(Node::ContextVar(var));
-        ctx.add_var(new_cvarnode.into(), self).into_expr_err(*loc)?;
-        self.add_edge(new_cvarnode, ctx, Edge::Context(ContextEdge::Variable));
-        if let Some(func_node) = ContextVarNode::from(new_cvarnode)
-            .ty(self)
-            .into_expr_err(*loc)?
-            .func_node(self)
-        {
-            self.func_call(arena, ctx, *loc, inputs, func_node, func_call_str, None)
-        } else {
-            unreachable!()
-        }
-    }
-
     /// Matches the input kinds and performs the call
     fn func_call(
         &mut self,
@@ -432,6 +141,11 @@ pub trait FuncCaller:
         func_call_str: Option<&str>,
         modifier_state: &Option<ModifierState>,
     ) -> Result<(), ExprErr> {
+        tracing::trace!(
+            "Calling function: {} in context: {}",
+            func_node.name(self).unwrap(),
+            ctx.path(self)
+        );
         if !entry_call {
             if let Ok(true) = self.apply(arena, ctx, loc, func_node, params, inputs, &mut vec![]) {
                 return Ok(());
@@ -456,17 +170,67 @@ pub trait FuncCaller:
 
         // begin modifier handling by making sure modifiers were set
         if !func_node.modifiers_set(self).into_expr_err(loc)? {
-            self.set_modifiers(arena, func_node, ctx)?;
+            self.set_modifiers(func_node, ctx)?;
         }
 
         // get modifiers
         let mods = func_node.modifiers(self);
+        let modifiers_as_base = func_node
+            .underlying(self)
+            .into_expr_err(loc)?
+            .modifiers_as_base()
+            .into_iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        modifiers_as_base.iter().rev().for_each(|modifier| {
+            // We need to get the inputs for the modifier call, but
+            // the expressions are not part of the function body so
+            // we need to reset the parse index in the function context
+            // after we parse the inputs
+            let Some(args) = &modifier.args else {
+                return;
+            };
+            let curr_parse_idx = callee_ctx.parse_idx(self);
+            args.iter()
+                .for_each(|expr| self.traverse_expression(expr, Some(false)));
+            self.interpret(callee_ctx, loc, arena);
+            callee_ctx.underlying_mut(self).unwrap().parse_idx = curr_parse_idx;
+        });
+        let is_constructor = func_node.is_constructor(self).into_expr_err(loc)?;
         self.apply_to_edges(
             callee_ctx,
             loc,
             arena,
             &|analyzer, arena, callee_ctx, loc| {
-                if let Some(mod_state) =
+                if is_constructor {
+                    let mut state = ModifierState::new(
+                        0,
+                        loc,
+                        func_node,
+                        callee_ctx,
+                        ctx,
+                        renamed_inputs.clone(),
+                    );
+                    for _ in 0..mods.len() {
+                        analyzer.call_modifier_for_fn(
+                            arena,
+                            loc,
+                            callee_ctx,
+                            func_node,
+                            state.clone(),
+                        )?;
+                        state.num += 1;
+                    }
+
+                    analyzer.execute_call_inner(
+                        arena,
+                        loc,
+                        ctx,
+                        callee_ctx,
+                        func_node,
+                        func_call_str,
+                    )
+                } else if let Some(mod_state) =
                     &ctx.underlying(analyzer).into_expr_err(loc)?.modifier_state
                 {
                     // we are iterating through modifiers
@@ -483,7 +247,6 @@ pub trait FuncCaller:
                             ctx,
                             callee_ctx,
                             func_node,
-                            &renamed_inputs,
                             func_call_str,
                         )
                     }
@@ -506,7 +269,6 @@ pub trait FuncCaller:
                         ctx,
                         callee_ctx,
                         func_node,
-                        &renamed_inputs,
                         func_call_str,
                     )
                 }
@@ -523,7 +285,6 @@ pub trait FuncCaller:
         caller_ctx: ContextNode,
         callee_ctx: ContextNode,
         func_node: FunctionNode,
-        _renamed_inputs: &BTreeMap<ContextVarNode, ContextVarNode>,
         func_call_str: Option<&str>,
     ) -> Result<(), ExprErr> {
         tracing::trace!("executing: {}", func_node.name(self).into_expr_err(loc)?);
@@ -534,14 +295,15 @@ pub trait FuncCaller:
                 if let Some(var) =
                     ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())
                 {
-                    let cvar = self.add_node(Node::ContextVar(var));
+                    let cvar = self.add_node(var);
                     callee_ctx.add_var(cvar.into(), self).unwrap();
                     self.add_edge(cvar, callee_ctx, Edge::Context(ContextEdge::Variable));
                 }
             });
 
             // parse the function body
-            self.parse_ctx_statement(arena, &body, false, Some(callee_ctx));
+            self.traverse_statement(&body, None);
+            self.interpret(callee_ctx, body.loc(), arena);
             if let Some(mod_state) = &callee_ctx
                 .underlying(self)
                 .into_expr_err(loc)?
@@ -559,13 +321,10 @@ pub trait FuncCaller:
                 Ok(())
             }
         } else {
-            let ret_ctx = Context::new_subctx(
-                callee_ctx,
-                Some(caller_ctx),
+            let subctx_kind = SubContextKind::new_fn_ret(callee_ctx, caller_ctx);
+            let ret_subctx = Context::add_subctx(
+                subctx_kind,
                 loc,
-                None,
-                None,
-                false,
                 self,
                 caller_ctx
                     .underlying(self)
@@ -574,10 +333,6 @@ pub trait FuncCaller:
                     .clone(),
             )
             .unwrap();
-            let ret_subctx = ContextNode::from(self.add_node(Node::Context(ret_ctx)));
-            ret_subctx
-                .set_continuation_ctx(self, caller_ctx, "execute_call_inner")
-                .into_expr_err(loc)?;
 
             let res = callee_ctx
                 .set_child_call(ret_subctx, self)

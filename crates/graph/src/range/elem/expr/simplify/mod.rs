@@ -43,7 +43,7 @@ pub(crate) fn ident_rules(
                 _ => None,
             }
         }
-        RangeOp::Exp => {
+        RangeOp::Exp(_) => {
             if matches!(r.range_ord(&zero, arena), Some(std::cmp::Ordering::Equal)) {
                 Some(Elem::from(Concrete::from(U256::one())))
             } else {

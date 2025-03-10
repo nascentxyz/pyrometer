@@ -5,7 +5,7 @@ use graph::{
 use shared::{ExprErr, NodeIdx};
 
 use petgraph::{visit::EdgeRef, Direction};
-use solang_parser::pt::{Expression, Identifier};
+use solang_parser::pt::Expression;
 
 use std::collections::BTreeSet;
 
@@ -18,7 +18,7 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
         &mut self,
         ctx: ContextNode,
         ty: NodeIdx,
-        ident: &Identifier,
+        func_name: &str,
     ) -> Option<ExprRet> {
         self.possible_library_funcs(ctx, ty)
             .iter()
@@ -30,7 +30,7 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
                 }
             })
             .find_map(|(name, func)| {
-                if name == ident.name {
+                if name == func_name {
                     Some(ExprRet::Single((*func).into()))
                 } else {
                     None
@@ -39,9 +39,9 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
     }
 
     /// Get all possible library functions
-    fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> BTreeSet<FunctionNode> {
+    fn possible_library_funcs(&mut self, ctx: ContextNode, ty: NodeIdx) -> Vec<FunctionNode> {
         tracing::trace!("looking for library functions of type: {:?}", self.node(ty));
-        let mut funcs: BTreeSet<FunctionNode> = BTreeSet::new();
+        let mut funcs: Vec<FunctionNode> = Vec::new();
         if let Some(associated_contract) = ctx.maybe_associated_contract(self).unwrap() {
             // search for contract scoped `using` statements
             funcs.extend(
@@ -60,6 +60,8 @@ pub trait LibraryAccess: AnalyzerBackend<Expr = Expression, ExprErr = ExprErr> +
             );
         }
 
+        funcs.sort();
+        funcs.dedup();
         funcs
     }
 }

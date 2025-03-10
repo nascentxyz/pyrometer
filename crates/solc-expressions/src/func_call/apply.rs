@@ -1,7 +1,8 @@
-use crate::context_builder::StatementParser;
 use crate::helper::CallerHelper;
 use crate::member_access::ListAccess;
 use crate::variable::Variable;
+use crate::Flatten;
+use solang_parser::helpers::CodeLocation;
 
 use graph::{
     elem::{Elem, RangeElem, RangeExpr, RangeOp},
@@ -9,7 +10,7 @@ use graph::{
         Concrete, ContextNode, ContextVar, ContextVarNode, ExprRet, FuncVis, FunctionNode,
         FunctionParamNode, KilledKind,
     },
-    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Node, Range, SolcRange, VarType,
+    AnalyzerBackend, ContextEdge, Edge, GraphBackend, Range, SolcRange, VarType,
 };
 use shared::{AnalyzerLike, ExprErr, IntoExprErr, NodeIdx, RangeArena, StorageLocation};
 
@@ -69,7 +70,9 @@ pub trait FuncApplier:
                         );
                         let edges = apply_ctx.successful_edges(self).into_expr_err(loc)?;
                         match edges.len() {
-                            0 => {}
+                            0 => {
+                                ctx.kill(self, loc, KilledKind::Revert).into_expr_err(loc)?;
+                            }
                             1 => {
                                 if !self.apply_pure(
                                     arena,
@@ -153,7 +156,8 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(arena, body, false, Some(func));
+                        self.traverse_statement(body, None);
+                        self.interpret(func, body.loc(), arena)
                     }
 
                     seen.push(func);
@@ -201,7 +205,8 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(arena, body, false, Some(func));
+                        self.traverse_statement(body, None);
+                        self.interpret(func, body.loc(), arena)
                     }
 
                     seen.push(func);
@@ -248,7 +253,8 @@ pub trait FuncApplier:
 
                     self.handled_funcs_mut().push(func);
                     if let Some(body) = &func.underlying(self).unwrap().body.clone() {
-                        self.parse_ctx_statement(arena, body, false, Some(func));
+                        self.traverse_statement(body, None);
+                        self.interpret(func, body.loc(), arena)
                     }
 
                     seen.push(func);
@@ -271,8 +277,26 @@ pub trait FuncApplier:
         target_ctx: ContextNode,
         forks: bool,
     ) -> Result<bool, ExprErr> {
-        let replacement_map =
-            self.basic_inputs_replacement_map(arena, apply_ctx, loc, params, func_inputs)?;
+        // construct remappings for inputs
+        // if applying func a(uint x), map will be <x, (replacement_elem, replacement_idx)
+        //
+        // fucntion a(uint x) returns (uint y) {
+        //    y = x + 5;
+        // }
+        //  y will be returned and relies on x - therefore we need to replace all references of
+        //  x using the replacement map
+        //
+        //  What is produced is a ContextVarNode that's range is like the return of the normal function
+        //  but with x replaced with the input provided
+        tracing::trace!("here");
+        let replacement_map = self.basic_inputs_replacement_map(
+            arena,
+            apply_ctx,
+            target_ctx,
+            loc,
+            params,
+            func_inputs,
+        )?;
         tracing::trace!("applying pure function - replacement map: {replacement_map:#?}");
         let mut rets: Vec<_> = resulting_edge
             .return_nodes(self)
@@ -304,7 +328,7 @@ pub trait FuncApplier:
                     });
                 }
 
-                let mut new_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                let mut new_cvar = ContextVarNode::from(self.add_node(new_var));
                 self.add_edge(new_cvar, target_ctx, Edge::Context(ContextEdge::Variable));
                 target_ctx.add_var(new_cvar, self).unwrap();
 
@@ -339,8 +363,7 @@ pub trait FuncApplier:
                                     }
                                 });
                             }
-                            let new_field =
-                                ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                            let new_field = ContextVarNode::from(self.add_node(new_var));
                             self.add_edge(
                                 new_field,
                                 new_cvar,
@@ -397,7 +420,7 @@ pub trait FuncApplier:
                         }
                     });
                 }
-                let new_cvar = ContextVarNode::from(self.add_node(Node::ContextVar(new_var)));
+                let new_cvar = ContextVarNode::from(self.add_node(new_var));
 
                 if new_cvar.is_const(self, arena)?
                     && new_cvar.evaled_range_min(self, arena)?
@@ -420,7 +443,7 @@ pub trait FuncApplier:
             if let Some(var) =
                 ContextVar::maybe_new_from_func_ret(self, ret.underlying(self).unwrap().clone())
             {
-                let cvar = self.add_node(Node::ContextVar(var));
+                let cvar = self.add_node(var);
                 target_ctx.add_var(cvar.into(), self).unwrap();
                 self.add_edge(cvar, target_ctx, Edge::Context(ContextEdge::Variable));
                 rets.push(ExprRet::Single(cvar));
@@ -456,6 +479,7 @@ pub trait FuncApplier:
         &mut self,
         arena: &mut RangeArena<Elem<Concrete>>,
         apply_ctx: ContextNode,
+        target_ctx: ContextNode,
         loc: Loc,
         params: &[FunctionParamNode],
         func_inputs: &[ContextVarNode],
@@ -483,8 +507,14 @@ pub trait FuncApplier:
                         None
                     };
 
-                    let replacement =
-                        ContextVarNode::from(self.add_node(Node::ContextVar(new_cvar)));
+                    let replacement = ContextVarNode::from(self.add_node(new_cvar));
+
+                    self.add_edge(
+                        replacement,
+                        target_ctx,
+                        Edge::Context(ContextEdge::Variable),
+                    );
+                    target_ctx.add_var(replacement, self).unwrap();
 
                     if let Some(param_ty) = VarType::try_from_idx(self, param.ty(self).unwrap()) {
                         if !replacement.ty_eq_ty(&param_ty, self).into_expr_err(loc)? {
@@ -496,7 +526,7 @@ pub trait FuncApplier:
 
                     if let Some(_len_var) = replacement.array_to_len_var(self) {
                         // bring the length variable along as well
-                        self.get_length(arena, apply_ctx, loc, *func_input, false)
+                        self.get_length(arena, apply_ctx, *func_input, false, loc)
                             .unwrap();
                     }
 

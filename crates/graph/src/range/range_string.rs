@@ -248,7 +248,7 @@ impl ToRangeString for RangeExpr<Concrete> {
 
         if matches!(self.op, RangeOp::Min | RangeOp::Max) {
             RangeElemString::new(
-                format!("{}{{{}, {}}}", self.op.to_string(), lhs_str.s, rhs_str.s),
+                format!("{}{{{}, {}}}", self.op, lhs_str.s, rhs_str.s),
                 lhs_str.loc,
             )
         } else if matches!(self.op, RangeOp::Cast) {
@@ -268,7 +268,7 @@ impl ToRangeString for RangeExpr<Concrete> {
                     lhs_str.loc,
                 ),
                 _ => RangeElemString::new(
-                    format!("{}({}, {})", self.op.to_string(), lhs_str.s, rhs_str.s),
+                    format!("{}({}, {})", self.op, lhs_str.s, rhs_str.s),
                     lhs_str.loc,
                 ),
             }
@@ -299,7 +299,7 @@ impl ToRangeString for RangeExpr<Concrete> {
             RangeElemString::new(format!("concat({}, {})", lhs_str.s, rhs_str.s), lhs_str.loc)
         } else {
             RangeElemString::new(
-                format!("{} {} {}", lhs_str.s, self.op.to_string(), rhs_str.s),
+                format!("{} {} {}", lhs_str.s, self.op, rhs_str.s),
                 lhs_str.loc,
             )
         }

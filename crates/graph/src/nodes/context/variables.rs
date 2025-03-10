@@ -24,25 +24,22 @@ impl ContextNode {
     }
 
     /// Debug print the stack
-    pub fn debug_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+    pub fn debug_expr_stack_str(&self, analyzer: &impl GraphBackend) -> Result<String, GraphError> {
         let underlying_mut = self.underlying(analyzer)?;
-        underlying_mut
-            .expr_ret_stack
-            .iter()
-            .enumerate()
-            .for_each(|(i, elem)| println!("{i}. {}", elem.debug_str(analyzer)));
-        Ok(())
+        Ok(format!(
+            "{:#?}",
+            underlying_mut
+                .expr_ret_stack
+                .iter()
+                .rev()
+                .enumerate()
+                .map(|(i, elem)| format!("{i}. {}", elem.debug_str(analyzer)))
+                .collect::<Vec<_>>()
+        ))
     }
 
-    /// Debug print the temprorary stack
-    pub fn debug_tmp_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
-        let underlying_mut = self.underlying(analyzer)?;
-        underlying_mut
-            .tmp_expr
-            .iter()
-            .enumerate()
-            .filter(|(_i, maybe_elem)| maybe_elem.is_some())
-            .for_each(|(i, elem)| println!("{i}. {}", elem.clone().unwrap().debug_str(analyzer)));
+    pub fn debug_expr_stack(&self, analyzer: &impl GraphBackend) -> Result<(), GraphError> {
+        println!("{}", self.debug_expr_stack_str(analyzer)?);
         Ok(())
     }
 
@@ -105,10 +102,16 @@ impl ContextNode {
         name: &str,
     ) -> Result<Option<ContextVarNode>, GraphError> {
         if let Some(var) = self.var_by_name(analyzer, name) {
-            Ok(Some(var))
-        } else if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
-            parent.var_by_name_or_recurse(analyzer, name)
-        } else if let Some(parent) = self.underlying(analyzer)?.continuation_of {
+            return Ok(Some(var));
+        }
+
+        if let Some(parent) = self.ancestor_in_fn(analyzer, self.associated_fn(analyzer)?)? {
+            if let Some(in_parent) = parent.var_by_name_or_recurse(analyzer, name)? {
+                return Ok(Some(in_parent));
+            }
+        }
+
+        if let Some(parent) = self.underlying(analyzer)?.continuation_of() {
             parent.var_by_name_or_recurse(analyzer, name)
         } else {
             Ok(None)
@@ -209,7 +212,6 @@ impl ContextNode {
     }
 
     pub fn contract_vars_referenced_global(&self, analyzer: &impl AnalyzerBackend) -> Vec<VarNode> {
-        println!("getting storage vars for: {}", self.path(analyzer));
         let mut reffed_storage = self.contract_vars_referenced(analyzer);
         analyzer
             .graph()
@@ -289,69 +291,21 @@ impl ContextNode {
         Ok(ret)
     }
 
-    /// Push an expression return into the temporary stack
-    pub fn push_tmp_expr(
+    pub fn kill_if_ret_killed(
         &self,
-        expr_ret: ExprRet,
         analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<(), GraphError> {
-        let underlying_mut = self.underlying_mut(analyzer)?;
-        underlying_mut.tmp_expr.push(Some(expr_ret));
-        Ok(())
-    }
-
-    /// Append a new expression return to an expression return
-    /// currently in the temporary stack
-    pub fn append_tmp_expr(
-        &self,
-        expr_ret: ExprRet,
-        analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<(), GraphError> {
-        let underlying_mut = self.underlying_mut(analyzer)?;
-        match underlying_mut.tmp_expr.pop() {
-            Some(Some(s @ ExprRet::Single(_))) => {
-                underlying_mut
-                    .tmp_expr
-                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
-            }
-            Some(Some(s @ ExprRet::SingleLiteral(_))) => {
-                underlying_mut
-                    .tmp_expr
-                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
-            }
-            Some(Some(ExprRet::Multi(ref mut inner))) => {
-                inner.push(expr_ret);
-                underlying_mut
-                    .tmp_expr
-                    .push(Some(ExprRet::Multi(inner.to_vec())));
-            }
-            Some(Some(s @ ExprRet::Null)) => {
-                underlying_mut
-                    .tmp_expr
-                    .push(Some(ExprRet::Multi(vec![s, expr_ret])));
-            }
-            Some(Some(ExprRet::CtxKilled(kind))) => {
-                underlying_mut.tmp_expr = vec![Some(ExprRet::CtxKilled(kind))];
-                underlying_mut.expr_ret_stack = vec![ExprRet::CtxKilled(kind)];
-            }
-            _ => {
-                underlying_mut.tmp_expr.push(Some(expr_ret));
-            }
-        }
-        Ok(())
-    }
-
-    /// Pops a from the temporary ExprRet stack
-    pub fn pop_tmp_expr(
-        &self,
         loc: Loc,
-        analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<Option<ExprRet>, GraphError> {
-        let underlying_mut = self.underlying_mut(analyzer)?;
-        if let Some(Some(expr)) = underlying_mut.tmp_expr.pop() {
-            Ok(Some(self.maybe_move_expr(expr, loc, analyzer)?))
+    ) -> Result<bool, GraphError> {
+        let underlying = self.underlying(analyzer)?;
+        if let Some(killed_ret) = underlying
+            .expr_ret_stack
+            .iter()
+            .find(|ret| ret.has_killed())
+        {
+            self.kill(analyzer, loc, killed_ret.killed_kind().unwrap())?;
+            Ok(true)
         } else {
-            Ok(None)
+            Ok(false)
         }
     }
 
@@ -403,7 +357,6 @@ impl ContextNode {
     }
 
     pub fn recursive_move_struct_field(
-        &self,
         parent: ContextVarNode,
         field: ContextVarNode,
         loc: Loc,
@@ -422,7 +375,7 @@ impl ContextNode {
 
         let sub_fields = field.struct_to_fields(analyzer)?;
         sub_fields.iter().try_for_each(|sub_field| {
-            self.recursive_move_struct_field(new_cvarnode, *sub_field, loc, analyzer)
+            Self::recursive_move_struct_field(new_cvarnode, *sub_field, loc, analyzer)
         })
     }
 
@@ -468,7 +421,7 @@ impl ContextNode {
 
                 let fields = var.struct_to_fields(analyzer)?;
                 fields.iter().try_for_each(|field| {
-                    self.recursive_move_struct_field(new_cvarnode, *field, loc, analyzer)
+                    Self::recursive_move_struct_field(new_cvarnode, *field, loc, analyzer)
                 })?;
                 Ok(new_cvarnode)
             } else {
@@ -479,24 +432,28 @@ impl ContextNode {
         }
     }
 
-    /// Pop the latest expression return off the stack
-    #[tracing::instrument(level = "trace", skip_all)]
-    pub fn pop_expr_latest(
+    pub fn pop_n_latest_exprs(
         &self,
+        n: usize,
         loc: Loc,
         analyzer: &mut impl AnalyzerBackend,
-    ) -> Result<Option<ExprRet>, GraphError> {
+    ) -> Result<Vec<ExprRet>, GraphError> {
         let underlying_mut = self.underlying_mut(analyzer)?;
-        if let Some(elem) = underlying_mut.expr_ret_stack.pop() {
-            tracing::trace!(
-                "popping var {} from: {}",
-                elem.debug_str(analyzer),
-                self.path(analyzer)
-            );
-            Ok(Some(self.maybe_move_expr(elem, loc, analyzer)?))
-        } else {
-            Ok(None)
+
+        let mut res = vec![];
+        for _ in 0..n {
+            if let Some(elem) = underlying_mut.expr_ret_stack.pop() {
+                res.push(elem);
+            } else {
+                return Err(GraphError::StackLengthMismatch(format!(
+                    "Expected {n} ExprRets on stack, but had fewer"
+                )));
+            }
         }
+
+        res.into_iter()
+            .map(|elem| self.maybe_move_expr(elem, loc, analyzer))
+            .collect::<Result<Vec<_>, _>>()
     }
 
     /// Gets local vars that were assigned from a function return

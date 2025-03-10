@@ -22,17 +22,13 @@ impl ContextNode {
         analyzer: &mut impl GraphBackend,
         arena: &mut RangeArena<Elem<Concrete>>,
     ) -> Result<bool, GraphError> {
-        // println!("checking unreachable: {}", self.path(analyzer));
         let mut solver = self.dl_solver(analyzer)?.clone();
         match solver.solve_partial(analyzer, arena)? {
             SolveStatus::Unsat => {
                 tracing::trace!("{} is unreachable via UNSAT", self.path(analyzer));
                 Ok(true)
             }
-            _e => {
-                // println!("other: {e:?}");
-                Ok(false)
-            }
+            _e => Ok(false),
         }
     }
 

@@ -298,4 +298,23 @@ impl ExprRet {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+
+    pub fn into_sized<const N: usize>(&self) -> [Self; N] {
+        self.as_vec().try_into().unwrap_or_else(|v: Vec<Self>| {
+            panic!("Expected a Vec of length {} but it was {}", N, v.len())
+        })
+    }
+
+    pub fn implicitly_castable_to(
+        &self,
+        analyzer: &impl GraphBackend,
+        to_ty: &VarType,
+    ) -> Result<bool, GraphError> {
+        let idx = self.expect_single()?;
+        let is_lit = self.has_literal();
+        let Some(self_ty) = VarType::try_from_idx(analyzer, idx) else {
+            return Ok(false);
+        };
+        self_ty.implicitly_castable_to(to_ty, analyzer, is_lit)
+    }
 }

@@ -281,7 +281,6 @@ impl RangeElem<Concrete> for Reference<Concrete> {
 
         if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
             if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
-                tracing::trace!("reference maximize cache hit");
                 if let Some(MinMaxed::Maximized(cached)) = arenaized.maximized.clone() {
                     return Ok(*cached);
                 }
@@ -320,7 +319,6 @@ impl RangeElem<Concrete> for Reference<Concrete> {
         if let Some(idx) = arena.idx(&Elem::Reference(Reference::new(self.idx))) {
             if let Some(Elem::Reference(ref arenaized)) = arena.ranges.get(idx) {
                 if let Some(MinMaxed::Minimized(cached)) = arenaized.minimized.clone() {
-                    tracing::trace!("reference minimize cache hit");
                     return Ok(*cached);
                 }
             }

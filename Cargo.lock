@@ -41,7 +41,7 @@ dependencies = [
 
 [[package]]
 name = "analyzers"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ariadne",
  "graph",
@@ -390,7 +390,7 @@ checksum = "702fc72eb24e5a1e48ce58027a675bc24edd52096d5397d4aea7c6dd9eca0bd1"
 
 [[package]]
 name = "cli"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "analyzers",
  "ariadne",
@@ -911,7 +911,7 @@ checksum = "40ecd4077b5ae9fd2e9e169b102c6c330d0605168eb0e8bf79952b256dbefffd"
 
 [[package]]
 name = "graph"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ethers-core",
  "hex",
@@ -1874,7 +1874,7 @@ dependencies = [
 
 [[package]]
 name = "pyrometer"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ahash",
  "analyzers",
@@ -1896,7 +1896,7 @@ dependencies = [
 
 [[package]]
 name = "queries"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "analyzers",
  "ariadne",
@@ -2333,7 +2333,7 @@ dependencies = [
 
 [[package]]
 name = "shared"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "ahash",
  "ethers-core",
@@ -2414,7 +2414,7 @@ dependencies = [
 
 [[package]]
 name = "solc-expressions"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
  "analyzers",
  "ethers-core",

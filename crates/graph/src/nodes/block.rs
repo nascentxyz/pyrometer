@@ -68,4 +68,7 @@ pub struct Block {
     pub prevrandao: Option<U256>,
     /// The block's timestamp
     pub timestamp: Option<U256>,
+    /// The block's blobhash
+    pub blobhash: Vec<H256>,
+    pub blobbasefee: Option<U256>,
 }
